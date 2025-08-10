@@ -38,4 +38,4 @@ jobs:
             git pull origin main  # Pull latest changes
             pnpm install # Install dependencies
             pnpm build  # Build the Next.js app
-            pm2 restart web-app || PORT=$PORT pm2 start npx --name "web-app" -- serve dist --single --listen $PORT
+            pm2 restart web-app || PORT=$PORT pm2 start pnpm --name "web-app" -- start
