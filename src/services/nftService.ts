@@ -33,7 +33,7 @@ const MOCK_SESSION_DETAILS: { [id: string]: SessionDetails } = {
     creator: 'ChromaMind Labs',
     category: 'Relaxation',
     intensity: 'Mild',
-    audioUrl: '/audio/ocean-waves.mp3',
+    audioUrl: '/audios/rave.mp3',
     events: [ /* ... event data from previous step ... */ ],
     comments: [
       { author: 'ZenMaster', avatarUrl: '/avatars/avatar1.png', text: 'Pure bliss. I felt like I was floating in the ocean. Highly recommended for de-stressing after a long day.' },
@@ -49,7 +49,7 @@ const MOCK_SESSION_DETAILS: { [id: string]: SessionDetails } = {
     creator: 'Dr. Aura Bright',
     category: 'Focus',
     intensity: 'Moderate',
-    audioUrl: '/audio/forest-sounds.mp3',
+    audioUrl: '/audios/rave.mp3',
     events: [ /* ... event data from previous step ... */ ],
     comments: [
       { author: 'DeepWork', avatarUrl: '/avatars/avatar3.png', text: 'My go-to for deep work sessions. The amber light pulses really help me lock in and ignore distractions. A game-changer.' },
@@ -64,7 +64,7 @@ const MOCK_SESSION_DETAILS: { [id: string]: SessionDetails } = {
     creator: 'ChromaMind Labs',
     category: 'Energy',
     intensity: 'Intense',
-    audioUrl: '/audio/uplifting-music.mp3',
+    audioUrl: '/audios/rave.mp3',
     events: [ /* ... event data from previous step ... */ ],
     comments: [
       { author: 'MorningGlow', avatarUrl: '/avatars/avatar4.png', text: 'Better than a cup of coffee! The vibrant reds and oranges really wake up my mind. I feel ready to take on the day.' },
