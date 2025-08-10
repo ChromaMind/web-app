@@ -6,7 +6,7 @@ import React, { createContext, useState, ReactNode, useEffect } from 'react';
 interface BLEContextType {
   connect: () => Promise<void>;
   disconnect: () => void;
-  sendData: (data: ArrayBuffer) => Promise<void>; // Changed to ArrayBuffer to match your use case
+  sendData: (data: BufferSource) => Promise<void>;
   isConnected: boolean;
   isConnecting: boolean;
   device: BluetoothDevice | null;
@@ -88,7 +88,7 @@ export function BLEProvider({ children }: { children: ReactNode }) {
   };
 
   // Updated to use writeValueWithoutResponse
-  const sendData = async (data: ArrayBuffer) => {
+  const sendData = async (data: BufferSource) => {
     if (!ledCharacteristic) {
       console.error('No BLE characteristic found. Cannot send data.');
       return;
