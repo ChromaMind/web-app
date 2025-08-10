@@ -10,7 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     
     env:
-      PORT: ${{ secrets.PORT }} 
+      PORT: ${{ secrets.PORT }}
+      NEXT_PUBLIC_PROJECT_ID: ${{ secrets.NEXT_PUBLIC_PROJECT_ID }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
@@ -30,6 +31,7 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: PORT,NEXT_PUBLIC_PROJECT_ID
           script: |
             cd /root/Projects/Chromamind/web-app  # Change to your project's directory
             git checkout main
