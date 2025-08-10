@@ -1,0 +1,39 @@
+name: Deploy Next.js App
+
+on:
+  push:
+    branches:
+      - main  # Change this if you're using a different deployment branch
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    env:
+      PORT: ${{ secrets.PORT }} 
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install Dependencies
+        run: pnpm install
+
+      - name: Build Next.js App
+        run: pnpm build
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /root/Projects/Chromamind/web-app  # Change to your project's directory
+            git checkout main
+            git pull origin main  # Pull latest changes
+            pnpm install # Install dependencies
+            pnpm build  # Build the Next.js app
+            pm2 restart web-app || PORT=$PORT pm2 start npx --name "web-app" -- serve dist --single --listen $PORT
