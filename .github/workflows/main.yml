@@ -23,18 +23,13 @@ jobs:
       - name: Build Next.js app
         run: pnpm build
 
-      - name: Prepare deployment artifacts
-        run: |
-          mkdir -p deploy
-          cp -r .next public package.json pnpm-lock.yaml deploy/
-
       - name: Upload build files to server
         uses: appleboy/scp-action@master
         with:
           host: ${{ github.ref == 'refs/heads/main' && secrets.SERVER_HOST_PROD || secrets.SERVER_HOST_STAGING }}
           username: ${{ github.ref == 'refs/heads/main' && secrets.SERVER_USER_PROD || 'ubuntu' }}
           key: ${{ github.ref == 'refs/heads/main' && secrets.SSH_PRIVATE_KEY_PROD || secrets.SSH_PRIVATE_KEY_STAGING }}
-          source: deploy/
+          source: ".next,public,package.json,pnpm-lock.yaml"
           target: ${{ github.ref == 'refs/heads/main' && '/root/Projects/Chromamind/web-app' || '/home/ubuntu/Projects/Chromamind/web-app' }}
 
       - name: SSH commands to install and restart pm2
