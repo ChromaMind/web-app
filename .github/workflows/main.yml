@@ -4,14 +4,11 @@ on:
   push:
     branches:
       - main
+      - dev
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
-    env:
-      PORT: ${{ secrets.PORT }}
-      NEXT_PUBLIC_PROJECT_ID: ${{ secrets.NEXT_PUBLIC_PROJECT_ID }}
 
     steps:
       - name: Checkout code
@@ -26,30 +23,34 @@ jobs:
       - name: Build Next.js app
         run: pnpm build
 
-      - name: Prepare artifact directory
+      - name: Prepare deployment artifacts
         run: |
           mkdir -p deploy
           cp -r .next public package.json pnpm-lock.yaml deploy/
 
-      - name: Sync build files to server
+      - name: Upload build files to server
         uses: appleboy/scp-action@master
         with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "deploy/"
-          target: "/root/Projects/Chromamind/web-app"
+          host: ${{ github.ref == 'refs/heads/main' && secrets.SERVER_HOST_PROD || secrets.SERVER_HOST_STAGING }}
+          username: ${{ github.ref == 'refs/heads/main' && secrets.SERVER_USER_PROD || 'ubuntu' }}
+          key: ${{ github.ref == 'refs/heads/main' && secrets.SSH_PRIVATE_KEY_PROD || secrets.SSH_PRIVATE_KEY_STAGING }}
+          source: deploy/
+          target: ${{ github.ref == 'refs/heads/main' && '/root/Projects/Chromamind/web-app' || '/home/ubuntu/Projects/Chromamind/web-app' }}
 
-      - name: Restart app on server
+      - name: SSH commands to install and restart pm2
         uses: appleboy/ssh-action@master
         with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: PORT,NEXT_PUBLIC_PROJECT_ID
+          host: ${{ github.ref == 'refs/heads/main' && secrets.SERVER_HOST_PROD || secrets.SERVER_HOST_STAGING }}
+          username: ${{ github.ref == 'refs/heads/main' && secrets.SERVER_USER_PROD || 'ubuntu' }}
+          key: ${{ github.ref == 'refs/heads/main' && secrets.SSH_PRIVATE_KEY_PROD || secrets.SSH_PRIVATE_KEY_STAGING }}
+          envs: PORT_STAGING,PORT_PROD,NEXT_PUBLIC_PROJECT_ID
           script: |
-            cd /root/Projects/Chromamind/web-app
-            # Install production dependencies only (optional, if changed)
+            cd ${{ github.ref == 'refs/heads/main' && '/root/Projects/Chromamind/web-app' || '/home/ubuntu/Projects/Chromamind/web-app' }}
             pnpm install --prod
-            # Restart with pm2
-            pm2 restart web-app || PORT=$PORT pm2 start pnpm --name "web-app" -- start
+
+            if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+              pm2 restart web-app-prod || PORT=$PORT_PROD NEXT_PUBLIC_PROJECT_ID=$NEXT_PUBLIC_PROJECT_ID pm2 start pnpm --name "web-app-prod" -- start
+            else
+              pm2 restart web-app-dev || PORT=$PORT_STAGING NEXT_PUBLIC_PROJECT_ID=$NEXT_PUBLIC_PROJECT_ID pm2 start pnpm --name "web-app-dev" -- start
+            fi
+            pm2 save
