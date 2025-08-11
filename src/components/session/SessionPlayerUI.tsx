@@ -1,96 +1,137 @@
 "use client";
 
-import Link from "next/link";
-import Image from "next/image";
+import { useEffect, useRef, useState } from "react";
 import type { SessionDetails } from "@/services/nftService";
 import type { useSessionPlayerEngine } from "@/hooks/useSessionPlayerEngine";
-import { useHasMounted } from "@/hooks/useHasMounted";
-import { useEffect } from "react";
 
 type PlayerEngine = ReturnType<typeof useSessionPlayerEngine>;
 
 interface SessionPlayerUIProps {
   session: SessionDetails;
-  player: PlayerEngine;
-  isDeviceConnected: boolean;
+  player: PlayerEngine;          // kept in the signature but unused
+  isDeviceConnected: boolean;    // ignored per your note
 }
 
-const formatTime = (timeInSeconds: number) => { /* ... unchanged ... */ };
+const formatTime = (s: number) => {
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${m}:${sec.toString().padStart(2, "0")}`;
+};
 
-export function SessionPlayerUI({ session, player, isDeviceConnected }: SessionPlayerUIProps) {
-  const hasMounted = useHasMounted();
+export function SessionPlayerUI({ session }: SessionPlayerUIProps) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // --- THIS IS THE CORE FIX ---
-  // The UI component now directly controls the audio element.
-  const handlePlayPause = () => {
-    if (!player.audioRef.current) return;
+  const [playing, setPlaying] = useState(false);
+  const [current, setCurrent] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const seeking = useRef(false);
 
-    if (player.isPlaying) {
-      player.audioRef.current.pause();
-      player.pause(); // Update state in the hook
+  // Wire listeners once
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const onLoaded = () => setDuration(audio.duration || 0);
+    const onTime = () => { if (!seeking.current) setCurrent(audio.currentTime || 0); };
+    const onPlay = () => setPlaying(true);
+    const onPause = () => setPlaying(false);
+    const onEnded = () => { setPlaying(false); setCurrent(0); };
+    const onError = () => console.error("Audio error:", audio.error);
+
+    audio.addEventListener("loadedmetadata", onLoaded);
+    audio.addEventListener("timeupdate", onTime);
+    audio.addEventListener("play", onPlay);
+    audio.addEventListener("pause", onPause);
+    audio.addEventListener("ended", onEnded);
+    audio.addEventListener("error", onError);
+
+    return () => {
+      audio.removeEventListener("loadedmetadata", onLoaded);
+      audio.removeEventListener("timeupdate", onTime);
+      audio.removeEventListener("play", onPlay);
+      audio.removeEventListener("pause", onPause);
+      audio.removeEventListener("ended", onEnded);
+      audio.removeEventListener("error", onError);
+    };
+  }, []);
+
+  const togglePlay = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (audio.paused) {
+      audio.play().catch((e) => console.error("play() failed:", e));
     } else {
-      // This play() is triggered directly by the user's click, satisfying browser policy.
-      player.audioRef.current.play().catch(error => {
-        console.error("Audio playback failed:", error);
-      });
-      player.play(); // Update state in the hook
+      audio.pause();
     }
   };
 
-  // Sync the audio element's playing state with our React state
-  useEffect(() => {
-    const audio = player.audioRef.current;
+  const onSeekStart = () => (seeking.current = true);
+  const onSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => setCurrent(Number(e.target.value));
+  const onSeekEnd = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const audio = audioRef.current;
     if (!audio) return;
-    
-    const syncPlay = () => player.setIsPlaying(true);
-    const syncPause = () => player.setIsPlaying(false);
+    const t = Number(e.target.value);
+    audio.currentTime = t;
+    setCurrent(t);
+    seeking.current = false;
+  };
 
-    audio.addEventListener('play', syncPlay);
-    audio.addEventListener('pause', syncPause);
-
-    return () => {
-        audio.removeEventListener('play', syncPlay);
-        audio.removeEventListener('pause', syncPause);
-    }
-  }, [player.audioRef, player.setIsPlaying]);
-
-
-  if (!hasMounted) { /* ... unchanged ... */ }
-  if (!isDeviceConnected) { /* ... unchanged ... */ }
+  const progress = duration ? (current / duration) * 100 : 0;
 
   return (
-    <div className="max-w-md mx-auto rounded-xl shadow-2xl border border-slate-200 overflow-hidden relative">
-      {/* Background Image Layer (unchanged) */}
-      <div className="absolute inset-0 z-0">
-          {/* ... */}
-      </div>
-      {/* Glassmorphism Overlay (unchanged) */}
-      <div className="absolute inset-0 z-10 bg-white/60 backdrop-blur-md"></div>
-      
-      {/* Content Layer */}
-      <div className="relative z-20 p-6 sm:p-8">
-        {/* Title and description (unchanged) */}
-        <div className="text-center">
-            {/* ... */}
-        </div>
-        
-        {/* Scrubber / Range slider (unchanged) */}
-        <div className="mt-8">
-            {/* ... */}
-        </div>
+      <div className="max-w-md mx-auto rounded-xl shadow-2xl border border-slate-200 overflow-hidden relative">
+        {/* DEBUG: add controls if needed */}
+        {/* <audio ref={audioRef} src="/audios/rave.mp3" preload="auto" controls /> */}
+        <audio ref={audioRef} src="/audios/rave.mp3" preload="auto" />
 
-        {/* Play/Pause Button - now uses handlePlayPause */}
-        <div className="flex justify-center items-center mt-6">
-          <button
-            onClick={handlePlayPause} // <-- Use the new direct handler
-            disabled={!player.isReady}
-            className="bg-blue-600 text-white rounded-full w-20 h-20 flex items-center justify-center text-4xl shadow-lg ..."
-            aria-label={player.isPlaying ? 'Pause' : 'Play'}
-          >
-            {player.isPlaying ? '❚❚' : '▶'}
-          </button>
+        <div className="absolute inset-0 z-10 bg-white/60 backdrop-blur-md" />
+
+        <div className="relative z-20 p-6 sm:p-8">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold">{[session.name ?? "Rave Session"]}</h2>
+            <p className="text-gray-600">{session.description ?? "Play /audios/rave.mp3"}</p>
+          </div>
+
+          {/* time */}
+          <div className="mt-6 flex justify-between text-sm">
+            <span>{formatTime(current)}</span>
+            <span>{formatTime(duration)}</span>
+          </div>
+
+          {/* progress */}
+          <div className="mt-2 relative">
+            <div className="h-2 bg-gray-200 rounded-full">
+              <div
+                  className="h-2 bg-blue-600 rounded-full transition-[width] duration-100"
+                  style={{ width: `${progress}%` }}
+              />
+            </div>
+            <input
+                type="range"
+                min={0}
+                max={duration || 0}
+                step={0.1}
+                value={current}
+                onMouseDown={onSeekStart}
+                onTouchStart={onSeekStart}
+                onChange={onSeekChange}
+                className="absolute top-0 w-full h-2 opacity-0 cursor-pointer"
+                aria-label="Seek"
+            />
+          </div>
+
+          {/* toggle */}
+          <div className="flex justify-center items-center mt-6">
+            <button
+                onClick={togglePlay}
+                className="bg-blue-600 hover:bg-blue-700 text-white rounded-full w-20 h-20 flex items-center justify-center text-4xl shadow-lg transition-colors"
+                aria-label={playing ? "Pause" : "Play"}
+            >
+              {playing ? "❚❚" : "▶"}
+            </button>
+          </div>
         </div>
       </div>
-    </div>
   );
 }

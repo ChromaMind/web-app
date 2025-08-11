@@ -16,6 +16,7 @@ export interface Session {
 export interface SessionDetails extends Session {
   creator: string;
   category: 'Relaxation' | 'Focus' | 'Energy';
+  name: string;
   intensity: 'Mild' | 'Moderate' | 'Intense';
   audioUrl: string;
   events: { time: number; colors: number[][] }[];
