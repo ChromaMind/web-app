@@ -2,14 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { SessionDetails } from "@/services/nftService";
-import type { useSessionPlayerEngine } from "@/hooks/useSessionPlayerEngine";
+import ChromaPreview, { LedRGBFrame } from "@/components/session/ChromaPreview";
 
-type PlayerEngine = ReturnType<typeof useSessionPlayerEngine>;
+type PlayerEngine = any; // placeholder
 
 interface SessionPlayerUIProps {
   session: SessionDetails;
-  player: PlayerEngine;          // kept in the signature but unused
-  isDeviceConnected: boolean;    // ignored per your note
+  player: PlayerEngine;
+  isDeviceConnected: boolean;
 }
 
 const formatTime = (s: number) => {
@@ -20,13 +20,19 @@ const formatTime = (s: number) => {
 
 export function SessionPlayerUI({ session }: SessionPlayerUIProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
 
   const [playing, setPlaying] = useState(false);
   const [current, setCurrent] = useState(0);
   const [duration, setDuration] = useState(0);
   const seeking = useRef(false);
 
-  // Wire listeners once
+  const [frame, setFrame] = useState<LedRGBFrame>(new Uint8Array(2 * 16 * 3)); // 2×16 RGB
+
+  const rows = 2;
+  const cols = 16;
+
+  // Audio time + metadata
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -55,6 +61,41 @@ export function SessionPlayerUI({ session }: SessionPlayerUIProps) {
     };
   }, []);
 
+  // FFT visualizer for ChromaPreview
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || analyserRef.current) return;
+
+    const ctx = new AudioContext();
+    const src = ctx.createMediaElementSource(audio);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 64;
+    src.connect(analyser);
+    analyser.connect(ctx.destination);
+    analyserRef.current = analyser;
+
+    const freqData = new Uint8Array(analyser.frequencyBinCount);
+
+    let rafId: number;
+    const loop = () => {
+      analyser.getByteFrequencyData(freqData);
+
+      const rgbFrame = new Uint8Array(rows * cols * 3);
+      for (let i = 0; i < rows * cols; i++) {
+        const v = freqData[i % freqData.length];
+        rgbFrame[i * 3 + 0] = v;                // R
+        rgbFrame[i * 3 + 1] = 255 - v;          // G
+        rgbFrame[i * 3 + 2] = (v * 2) % 255;    // B
+      }
+      setFrame(rgbFrame);
+
+      rafId = requestAnimationFrame(loop);
+    };
+    loop();
+
+    return () => cancelAnimationFrame(rafId);
+  }, [rows, cols]);
+
   const togglePlay = () => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -81,16 +122,19 @@ export function SessionPlayerUI({ session }: SessionPlayerUIProps) {
 
   return (
       <div className="max-w-md mx-auto rounded-xl shadow-2xl border border-slate-200 overflow-hidden relative">
-        {/* DEBUG: add controls if needed */}
-        {/* <audio ref={audioRef} src="/audios/rave.mp3" preload="auto" controls /> */}
         <audio ref={audioRef} src="/audios/rave.mp3" preload="auto" />
 
         <div className="absolute inset-0 z-10 bg-white/60 backdrop-blur-md" />
 
         <div className="relative z-20 p-6 sm:p-8">
           <div className="text-center">
-            <h2 className="text-2xl font-bold">{[session.name ?? "Rave Session"]}</h2>
+            <h2 className="text-2xl font-bold">{session.name ?? "Rave Session"}</h2>
             <p className="text-gray-600">{session.description ?? "Play /audios/rave.mp3"}</p>
+          </div>
+
+          {/* LED Preview */}
+          <div className="mt-6 flex justify-center">
+            <ChromaPreview rows={rows} cols={cols} frame={frame} serpentine={true} strobeHz={0} />
           </div>
 
           {/* time */}
