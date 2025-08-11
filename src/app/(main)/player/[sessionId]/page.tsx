@@ -46,8 +46,8 @@ export default function PlayerPage() {
             }
 
             if (eventIndex !== -1 && eventIndex !== lastEventIndexRef.current) {
-                const frameData = prepareFrame(session.events[eventIndex].colors);
-                sendData(frameData);
+                // const frameData = prepareFrame(session.events[eventIndex].colors);
+                //sendData(frameData);
                 lastEventIndexRef.current = eventIndex;
             }
         },

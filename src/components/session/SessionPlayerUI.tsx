@@ -1,72 +1,73 @@
+// components/session/SessionPlayerUI.tsx
 "use client";
 
 import { useEffect, useRef, useState } from "react";
 import type { SessionDetails } from "@/services/nftService";
-import ChromaPreview, { LedRGBFrame } from "@/components/session/ChromaPreview";
+import ChromaPreview, { type LedRGBFrame } from "@/components/session/ChromaPreview";
+import { useBLE } from "@/hooks/useBLE";
 
-type PlayerEngine = any; // placeholder
+type PlayerEngine = any;
 
-interface SessionPlayerUIProps {
+interface Props {
   session: SessionDetails;
   player: PlayerEngine;
-  isDeviceConnected: boolean;
+  isDeviceConnected?: boolean;
 }
 
-const formatTime = (s: number) => {
-  const m = Math.floor(s / 60);
-  const sec = Math.floor(s % 60);
-  return `${m}:${sec.toString().padStart(2, "0")}`;
-};
+const fmt = (s: number) =>
+    `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, "0")}`;
 
-export function SessionPlayerUI({ session }: SessionPlayerUIProps) {
+export function SessionPlayerUI({ session }: Props) {
+  const { sendData, isConnected } = useBLE(); // <- use provider
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
+  const rafRef = useRef<number | null>(null);
 
   const [playing, setPlaying] = useState(false);
   const [current, setCurrent] = useState(0);
   const [duration, setDuration] = useState(0);
   const seeking = useRef(false);
 
-  const [frame, setFrame] = useState<LedRGBFrame>(new Uint8Array(2 * 16 * 3)); // 2×16 RGB
+  const rows = 2, cols = 16, ledCount = rows * cols;
+  const [frame, setFrame] = useState<LedRGBFrame>(new Uint8Array(ledCount * 3));
 
-  const rows = 2;
-  const cols = 16;
+  // device brightness
+  const [bleBrightness, setBleBrightness] = useState(0.25);
+  const bleBrightnessRef = useRef(bleBrightness);
+  useEffect(() => { bleBrightnessRef.current = bleBrightness; }, [bleBrightness]);
 
-  // Audio time + metadata
+  // audio events
   useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    const onLoaded = () => setDuration(audio.duration || 0);
-    const onTime = () => { if (!seeking.current) setCurrent(audio.currentTime || 0); };
+    const a = audioRef.current;
+    if (!a) return;
+    const onLoaded = () => setDuration(a.duration || 0);
+    const onTime = () => { if (!seeking.current) setCurrent(a.currentTime || 0); };
     const onPlay = () => setPlaying(true);
     const onPause = () => setPlaying(false);
     const onEnded = () => { setPlaying(false); setCurrent(0); };
-    const onError = () => console.error("Audio error:", audio.error);
-
-    audio.addEventListener("loadedmetadata", onLoaded);
-    audio.addEventListener("timeupdate", onTime);
-    audio.addEventListener("play", onPlay);
-    audio.addEventListener("pause", onPause);
-    audio.addEventListener("ended", onEnded);
-    audio.addEventListener("error", onError);
-
+    a.addEventListener("loadedmetadata", onLoaded);
+    a.addEventListener("timeupdate", onTime);
+    a.addEventListener("play", onPlay);
+    a.addEventListener("pause", onPause);
+    a.addEventListener("ended", onEnded);
     return () => {
-      audio.removeEventListener("loadedmetadata", onLoaded);
-      audio.removeEventListener("timeupdate", onTime);
-      audio.removeEventListener("play", onPlay);
-      audio.removeEventListener("pause", onPause);
-      audio.removeEventListener("ended", onEnded);
-      audio.removeEventListener("error", onError);
+      a.removeEventListener("loadedmetadata", onLoaded);
+      a.removeEventListener("timeupdate", onTime);
+      a.removeEventListener("play", onPlay);
+      a.removeEventListener("pause", onPause);
+      a.removeEventListener("ended", onEnded);
     };
   }, []);
 
-  // FFT visualizer for ChromaPreview
-  useEffect(() => {
+  // analyser + RAF (created once on first play)
+  const setupAnalyserIfNeeded = () => {
     const audio = audioRef.current;
-    if (!audio || analyserRef.current) return;
+    if (!audio) return;
+    if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
+    if (analyserRef.current) return;
 
-    const ctx = new AudioContext();
+    const ctx = audioCtxRef.current;
     const src = ctx.createMediaElementSource(audio);
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 64;
@@ -75,102 +76,121 @@ export function SessionPlayerUI({ session }: SessionPlayerUIProps) {
     analyserRef.current = analyser;
 
     const freqData = new Uint8Array(analyser.frequencyBinCount);
+    let lastSend = 0;
 
-    let rafId: number;
     const loop = () => {
       analyser.getByteFrequencyData(freqData);
 
-      const rgbFrame = new Uint8Array(rows * cols * 3);
-      for (let i = 0; i < rows * cols; i++) {
+      // preview (full brightness)
+      const rgbFrame = new Uint8Array(ledCount * 3);
+      for (let i = 0; i < ledCount; i++) {
         const v = freqData[i % freqData.length];
-        rgbFrame[i * 3 + 0] = v;                // R
-        rgbFrame[i * 3 + 1] = 255 - v;          // G
-        rgbFrame[i * 3 + 2] = (v * 2) % 255;    // B
+        rgbFrame[i * 3 + 0] = v;
+        rgbFrame[i * 3 + 1] = 255 - v;
+        rgbFrame[i * 3 + 2] = (v * 2) % 255;
       }
       setFrame(rgbFrame);
 
-      rafId = requestAnimationFrame(loop);
+      // send to device (dimmed) via provider
+      const now = performance.now();
+      if (now - lastSend >= 33 && isConnected) { // ~30fps
+        const b = bleBrightnessRef.current;
+        const scaledColors: number[][] = new Array(ledCount);
+        if (b <= 0) {
+          for (let i = 0; i < ledCount; i++) scaledColors[i] = [0, 0, 0];
+        } else {
+          for (let i = 0; i < ledCount; i++) {
+            scaledColors[i] = [
+              Math.floor(rgbFrame[i * 3 + 0] * b),
+              Math.floor(rgbFrame[i * 3 + 1] * b),
+              Math.floor(rgbFrame[i * 3 + 2] * b),
+            ];
+          }
+        }
+        // fire-and-forget; provider silently ignores if not connected
+        void sendData(scaledColors);
+        lastSend = now;
+      }
+
+      rafRef.current = requestAnimationFrame(loop);
     };
-    loop();
 
-    return () => cancelAnimationFrame(rafId);
-  }, [rows, cols]);
+    rafRef.current = requestAnimationFrame(loop);
+  };
 
-  const togglePlay = () => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    if (audio.paused) {
-      audio.play().catch((e) => console.error("play() failed:", e));
-    } else {
-      audio.pause();
-    }
+  const togglePlay = async () => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
+    if (audioCtxRef.current.state === "suspended") await audioCtxRef.current.resume();
+    setupAnalyserIfNeeded();
+    if (a.paused) a.play().catch((e) => console.error("play failed:", e));
+    else a.pause();
   };
 
   const onSeekStart = () => (seeking.current = true);
   const onSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => setCurrent(Number(e.target.value));
   const onSeekEnd = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const audio = audioRef.current;
-    if (!audio) return;
+    const a = audioRef.current;
+    if (!a) return;
     const t = Number(e.target.value);
-    audio.currentTime = t;
+    a.currentTime = t;
     setCurrent(t);
     seeking.current = false;
   };
 
+  useEffect(() => {
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, []);
+
   const progress = duration ? (current / duration) * 100 : 0;
 
   return (
-      <div className="max-w-md mx-auto rounded-xl shadow-2xl border border-slate-200 overflow-hidden relative">
-        <audio ref={audioRef} src="/audios/rave.mp3" preload="auto" />
-
-        <div className="absolute inset-0 z-10 bg-white/60 backdrop-blur-md" />
-
+      <div className="max-w-md mx-auto rounded-xl shadow-2xl border border-slate-200 overflow-hidden">
+        <audio ref={audioRef} src={session.audioUrl ?? "/audios/rave.mp3"} preload="auto" />
         <div className="relative z-20 p-6 sm:p-8">
           <div className="text-center">
             <h2 className="text-2xl font-bold">{session.name ?? "Rave Session"}</h2>
-            <p className="text-gray-600">{session.description ?? "Play /audios/rave.mp3"}</p>
+            <p className="text-gray-600">{session.description ?? "LED Music Visualizer"}</p>
           </div>
 
-          {/* LED Preview */}
           <div className="mt-6 flex justify-center">
-            <ChromaPreview rows={rows} cols={cols} frame={frame} serpentine={true} strobeHz={0} />
+            <ChromaPreview rows={rows} cols={cols} frame={frame} serpentine strobeHz={0} />
           </div>
 
-          {/* time */}
           <div className="mt-6 flex justify-between text-sm">
-            <span>{formatTime(current)}</span>
-            <span>{formatTime(duration)}</span>
+            <span>{fmt(current)}</span><span>{fmt(duration)}</span>
           </div>
 
-          {/* progress */}
           <div className="mt-2 relative">
             <div className="h-2 bg-gray-200 rounded-full">
-              <div
-                  className="h-2 bg-blue-600 rounded-full transition-[width] duration-100"
-                  style={{ width: `${progress}%` }}
-              />
+              <div className="h-2 bg-blue-600 rounded-full transition-[width] duration-100" style={{ width: `${progress}%` }} />
             </div>
             <input
-                type="range"
-                min={0}
-                max={duration || 0}
-                step={0.1}
-                value={current}
-                onMouseDown={onSeekStart}
-                onTouchStart={onSeekStart}
+                type="range" min={0} max={duration || 0} step={0.1} value={current}
+                onMouseDown={onSeekStart} onTouchStart={onSeekStart}
                 onChange={onSeekChange}
                 className="absolute top-0 w-full h-2 opacity-0 cursor-pointer"
-                aria-label="Seek"
             />
           </div>
 
-          {/* toggle */}
+          {/* Device brightness slider */}
+          <div className="mt-4">
+            <label className="block text-sm text-gray-600 mb-1">
+              Device Brightness: {(bleBrightness * 100).toFixed(0)}%
+            </label>
+            <input
+                type="range" min={0} max={1} step={0.05}
+                value={bleBrightness}
+                onChange={(e) => setBleBrightness(Number(e.target.value))}
+                className="w-full"
+            />
+          </div>
+
           <div className="flex justify-center items-center mt-6">
             <button
                 onClick={togglePlay}
                 className="bg-blue-600 hover:bg-blue-700 text-white rounded-full w-20 h-20 flex items-center justify-center text-4xl shadow-lg transition-colors"
-                aria-label={playing ? "Pause" : "Play"}
             >
               {playing ? "❚❚" : "▶"}
             </button>
