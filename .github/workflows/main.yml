@@ -32,20 +32,20 @@ jobs:
         uses: appleboy/scp-action@master
         with:
           host: ${{ github.ref == 'refs/heads/main' && secrets.SERVER_HOST_PROD || secrets.SERVER_HOST_STAGING }}
-          username: ${{ github.ref == 'refs/heads/main' && secrets.SERVER_USER_PROD || secrets.SERVER_USER_STAGING }}
+          username: ${{ github.ref == 'refs/heads/main' && secrets.SERVER_USER_PROD || 'ubuntu' }}
           key: ${{ github.ref == 'refs/heads/main' && secrets.SSH_PRIVATE_KEY_PROD || secrets.SSH_PRIVATE_KEY_STAGING }}
           source: deploy/
-          target: /root/Projects/Chromamind/web-app
+          target: ${{ github.ref == 'refs/heads/main' && '/root/Projects/Chromamind/web-app' || '/home/ubuntu/Projects/Chromamind/web-app' }}
 
       - name: SSH commands to install and restart pm2
         uses: appleboy/ssh-action@master
         with:
           host: ${{ github.ref == 'refs/heads/main' && secrets.SERVER_HOST_PROD || secrets.SERVER_HOST_STAGING }}
-          username: ${{ github.ref == 'refs/heads/main' && secrets.SERVER_USER_PROD || secrets.SERVER_USER_STAGING }}
+          username: ${{ github.ref == 'refs/heads/main' && secrets.SERVER_USER_PROD || 'ubuntu' }}
           key: ${{ github.ref == 'refs/heads/main' && secrets.SSH_PRIVATE_KEY_PROD || secrets.SSH_PRIVATE_KEY_STAGING }}
           envs: PORT_STAGING,PORT_PROD,NEXT_PUBLIC_PROJECT_ID
           script: |
-            cd /root/Projects/Chromamind/web-app
+            cd ${{ github.ref == 'refs/heads/main' && '/root/Projects/Chromamind/web-app' || '/home/ubuntu/Projects/Chromamind/web-app' }}
             git checkout ${{ github.ref == 'refs/heads/main' && 'main' || 'dev' }}
             git pull origin ${{ github.ref == 'refs/heads/main' && 'main' || 'dev' }}
             pnpm install --prod
