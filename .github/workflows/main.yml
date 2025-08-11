@@ -21,6 +21,9 @@ jobs:
         run: pnpm install
 
       - name: Build Next.js app
+        # Make the secret available as an environment variable for the build command
+        env:
+          NEXT_PUBLIC_PROJECT_ID: ${{ secrets.NEXT_PUBLIC_PROJECT_ID}}
         run: pnpm build
 
       - name: Upload build files to server
@@ -38,14 +41,22 @@ jobs:
           host: ${{ github.ref == 'refs/heads/main' && secrets.SERVER_HOST_PROD || secrets.SERVER_HOST_STAGING }}
           username: ${{ github.ref == 'refs/heads/main' && secrets.SERVER_USER_PROD || 'ubuntu' }}
           key: ${{ github.ref == 'refs/heads/main' && secrets.SSH_PRIVATE_KEY_PROD || secrets.SSH_PRIVATE_KEY_STAGING }}
-          envs: PORT_STAGING,PORT_PROD,NEXT_PUBLIC_PROJECT_ID
+          # Pass secrets to the remote server script
           script: |
+            # Navigate to the application directory
             cd ${{ github.ref == 'refs/heads/main' && '/root/Projects/Chromamind/web-app' || '/home/ubuntu/Projects/Chromamind/web-app' }}
+            
+            # Install production dependencies
             pnpm install --prod
 
+            # Check which branch was pushed and run the corresponding command
             if [ "${{ github.ref }}" == "refs/heads/main" ]; then
-              pm2 restart web-app-prod || PORT=$PORT_PROD NEXT_PUBLIC_PROJECT_ID=$NEXT_PUBLIC_PROJECT_ID pm2 start pnpm --name "web-app-prod" -- start
+              # Production: Use production port and restart or start the app
+              pm2 restart web-app-prod || PORT=${{ secrets.PORT_PROD }} pm2 start pnpm --name "web-app-prod" -- start
             else
-              pm2 restart web-app-dev || PORT=$PORT_STAGING NEXT_PUBLIC_PROJECT_ID=$NEXT_PUBLIC_PROJECT_ID pm2 start pnpm --name "web-app-dev" -- start
+              # Staging: Use staging port and restart or start the app
+              pm2 restart web-app-dev || PORT=${{ secrets.PORT_STAGING }} pm2 start pnpm --name "web-app-dev" -- start
             fi
+            
+            # Save the pm2 process list
             pm2 save
