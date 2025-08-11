@@ -1,109 +1,111 @@
+// context/BLEProvider.tsx
 "use client";
 
-import React, { createContext, useState, ReactNode, useEffect } from 'react';
+import React, { createContext, useCallback, useMemo, useRef, useState } from "react";
 
-// Define the shape of the context data
-interface BLEContextType {
-  connect: () => Promise<void>;
-  disconnect: () => void;
-  sendData: (data: BufferSource) => Promise<void>;
-  isConnected: boolean;
-  isConnecting: boolean;
-  device: BluetoothDevice | null;
-  isSupported: boolean;
-}
-
-// Create the context
-export const BLEContext = createContext<BLEContextType | undefined>(undefined);
-
-// Your specific UUIDs from your example
 const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
 const LED_UUID = "12345678-1234-5678-1234-56789abcdef1";
 
-export function BLEProvider({ children }: { children: ReactNode }) {
+type ColorsInput = Uint8Array | number[][];
+
+function rgbToRgb565(r: number, g: number, b: number) {
+  const r5 = (r >> 3) & 0x1F;
+  const g6 = (g >> 2) & 0x3F;
+  const b5 = (b >> 3) & 0x1F;
+  return (r5 << 11) | (g6 << 5) | b5;
+}
+
+function prepareFrame(colors: ColorsInput) {
+  const ledCount = Array.isArray((colors as any)[0])
+      ? (colors as number[][]).length
+      : (colors as Uint8Array).length / 3;
+
+  const buffer = new ArrayBuffer(ledCount * 2);
+  const view = new DataView(buffer);
+
+  if (Array.isArray((colors as any)[0])) {
+    (colors as number[][]).forEach((c, i) => {
+      view.setUint16(i * 2, rgbToRgb565(c[0], c[1], c[2]), false);
+    });
+  } else {
+    const flat = colors as Uint8Array;
+    for (let i = 0; i < ledCount; i++) {
+      const r = flat[i * 3];
+      const g = flat[i * 3 + 1];
+      const b = flat[i * 3 + 2];
+      view.setUint16(i * 2, rgbToRgb565(r, g, b), false);
+    }
+  }
+  return buffer;
+}
+
+type Ctx = {
+  device: BluetoothDevice | null;
+  isConnected: boolean;
+  isConnecting: boolean;
+  connect: () => Promise<void>;
+  disconnect: () => void;
+  sendData: (colors: ColorsInput) => Promise<void>;
+};
+
+export const BLEContext = createContext<Ctx | undefined>(undefined);
+
+export function BLEProvider({ children }: { children: React.ReactNode }) {
   const [device, setDevice] = useState<BluetoothDevice | null>(null);
-  const [ledCharacteristic, setLedCharacteristic] = useState<BluetoothRemoteGATTCharacteristic | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
-  const [isSupported, setIsSupported] = useState(false);
 
-  // Check for Bluetooth support on component mount
-  useEffect(() => {
-    if (typeof window !== 'undefined' && 'bluetooth' in navigator) {
-      setIsSupported(true);
-    }
-  }, []);
+  const characteristicRef = useRef<BluetoothRemoteGATTCharacteristic | null>(null);
 
-  // Event handler for when the device disconnects
-  const onDisconnected = () => {
-    console.log('BLE device disconnected.');
-    setIsConnected(false);
-    setDevice(null);
-    setLedCharacteristic(null);
-  };
-
-  const connect = async () => {
-    if (!isSupported) {
-      alert('Web Bluetooth is not supported in this browser or is not used in a secure context (https).');
-      return;
-    }
-
-    setIsConnecting(true);
+  const connect = useCallback(async () => {
     try {
-      console.log('Requesting Bluetooth device...');
-      const btDevice = await navigator.bluetooth.requestDevice({
+      setIsConnecting(true);
+      const dev = await navigator.bluetooth.requestDevice({
         filters: [{ services: [SERVICE_UUID] }],
       });
+      setDevice(dev);
 
-      console.log('Connecting to GATT Server...');
-      const server = await btDevice.gatt?.connect();
-      
-      console.log('Getting Service...');
-      const service = await server?.getPrimaryService(SERVICE_UUID);
-      
-      console.log('Getting Characteristic...');
-      const characteristic = await service?.getCharacteristic(LED_UUID);
-      setLedCharacteristic(characteristic || null);
-      
-      setDevice(btDevice);
+      const server = await dev.gatt!.connect();
+      const service = await server.getPrimaryService(SERVICE_UUID);
+      const chr = await service.getCharacteristic(LED_UUID);
+      characteristicRef.current = chr;
       setIsConnected(true);
-      console.log("✅ BLE connected");
 
-      btDevice.addEventListener('gattserverdisconnected', onDisconnected);
-
-    } catch (error) {
-      console.error('❌ BLE connection failed!', error);
+      // auto-cleanup on disconnect
+      dev.addEventListener("gattserverdisconnected", () => {
+        characteristicRef.current = null;
+        setIsConnected(false);
+      });
+    } catch (e) {
+      console.error("BLE connect failed:", e);
+      setIsConnected(false);
     } finally {
       setIsConnecting(false);
     }
-  };
+  }, []);
 
-  // --- THIS IS THE MISSING FUNCTION ---
-  const disconnect = () => {
-    if (!device) return;
+  const disconnect = useCallback(() => {
+    const dev = device;
+    if (dev?.gatt?.connected) dev.gatt.disconnect();
+    characteristicRef.current = null;
+    setIsConnected(false);
+  }, [device]);
 
-    console.log('Disconnecting from BLE device...');
-    device.gatt?.disconnect();
-    // The 'gattserverdisconnected' event listener will handle the state updates
-  };
-
-  // Updated to use writeValueWithoutResponse
-  const sendData = async (data: BufferSource) => {
-    if (!ledCharacteristic) {
-      console.error('No BLE characteristic found. Cannot send data.');
-      return;
-    }
+  const sendData = useCallback(async (colors: ColorsInput) => {
+    const chr = characteristicRef.current;
+    if (!chr) return; // silently ignore if not connected
     try {
-      // Using writeValueWithoutResponse as shown in your example
-      await ledCharacteristic.writeValueWithoutResponse(data);
-    } catch (error) {
-      console.error('❌ BLE write failed:', error);
+      const frame = prepareFrame(colors);
+      await chr.writeValueWithoutResponse(frame);
+    } catch (e) {
+      console.error("BLE write failed:", e);
     }
-  };
+  }, []);
 
-  return (
-    <BLEContext.Provider value={{ connect, disconnect, sendData, isConnected, isConnecting, device, isSupported }}>
-      {children}
-    </BLEContext.Provider>
+  const value = useMemo(
+      () => ({ device, isConnected, isConnecting, connect, disconnect, sendData }),
+      [device, isConnected, isConnecting, connect, disconnect, sendData]
   );
+
+  return <BLEContext.Provider value={value}>{children}</BLEContext.Provider>;
 }
