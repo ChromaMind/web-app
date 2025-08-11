@@ -3,29 +3,44 @@ name: Deploy Next.js App
 on:
   push:
     branches:
-      - main  # Change this if you're using a different deployment branch
+      - main
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    
+
     env:
       PORT: ${{ secrets.PORT }}
       NEXT_PUBLIC_PROJECT_ID: ${{ secrets.NEXT_PUBLIC_PROJECT_ID }}
+
     steps:
-      - name: Checkout Repository
+      - name: Checkout code
         uses: actions/checkout@v3
 
       - name: Install pnpm
         run: npm install -g pnpm
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: pnpm install
 
-      - name: Build Next.js App
+      - name: Build Next.js app
         run: pnpm build
 
-      - name: Deploy via SSH
+      - name: Prepare artifact directory
+        run: |
+          mkdir -p deploy
+          cp -r .next public package.json pnpm-lock.yaml deploy/
+
+      - name: Sync build files to server
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "deploy/"
+          target: "/root/Projects/Chromamind/web-app"
+
+      - name: Restart app on server
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -33,9 +48,8 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           envs: PORT,NEXT_PUBLIC_PROJECT_ID
           script: |
-            cd /root/Projects/Chromamind/web-app  # Change to your project's directory
-            git checkout main
-            git pull origin main  # Pull latest changes
-            pnpm install # Install dependencies
-            pnpm build  # Build the Next.js app
+            cd /root/Projects/Chromamind/web-app
+            # Install production dependencies only (optional, if changed)
+            pnpm install --prod
+            # Restart with pm2
             pm2 restart web-app || PORT=$PORT pm2 start pnpm --name "web-app" -- start
