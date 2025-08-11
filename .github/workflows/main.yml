@@ -46,12 +46,11 @@ jobs:
           envs: PORT_STAGING,PORT_PROD,NEXT_PUBLIC_PROJECT_ID
           script: |
             cd ${{ github.ref == 'refs/heads/main' && '/root/Projects/Chromamind/web-app' || '/home/ubuntu/Projects/Chromamind/web-app' }}
-            git checkout ${{ github.ref == 'refs/heads/main' && 'main' || 'dev' }}
-            git pull origin ${{ github.ref == 'refs/heads/main' && 'main' || 'dev' }}
             pnpm install --prod
 
             if [ "${{ github.ref }}" == "refs/heads/main" ]; then
-              pm2 restart web-app-prod || PORT=$PORT_PROD pm2 start pnpm --name "web-app-prod" -- start
+              pm2 restart web-app-prod || PORT=$PORT_PROD NEXT_PUBLIC_PROJECT_ID=$NEXT_PUBLIC_PROJECT_ID pm2 start pnpm --name "web-app-prod" -- start
             else
-              pm2 restart web-app-dev || PORT=$PORT_STAGING pm2 start pnpm --name "web-app-dev" -- start
+              pm2 restart web-app-dev || PORT=$PORT_STAGING NEXT_PUBLIC_PROJECT_ID=$NEXT_PUBLIC_PROJECT_ID pm2 start pnpm --name "web-app-dev" -- start
             fi
+            pm2 save
