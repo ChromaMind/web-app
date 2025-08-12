@@ -77,10 +77,8 @@ export function SessionPlayerUI({ session }: Props) {
   const strobeModeRef = useRef<StrobeMode>(strobeMode);
   useEffect(() => {
     strobeModeRef.current = strobeMode;
-    // On mode change, send immediate update (stop if off)
-    if (strobeMode === "off") {
-      if (isConnected) void sendStrobe(0);
-    }
+    // stop immediately if turned off
+    if (strobeMode === "off" && isConnected) void sendStrobe(0);
   }, [strobeMode, isConnected, sendStrobe]);
 
   const [manualHz, setManualHz] = useState<number>(8);
@@ -88,6 +86,12 @@ export function SessionPlayerUI({ session }: Props) {
   useEffect(() => {
     manualHzRef.current = manualHz;
   }, [manualHz]);
+
+  // preview strobe (capped to ~30Hz for the display)
+  const [previewStrobeHz, setPreviewStrobeHz] = useState<number>(0);
+
+  // remember brightness before pause/end so we can restore on play
+  const [lastBrightness, setLastBrightness] = useState<number>(0);
 
   // Bind audio element events
   useEffect(() => {
@@ -98,11 +102,32 @@ export function SessionPlayerUI({ session }: Props) {
     const onTime = () => {
       if (!seeking.current) setCurrent(a.currentTime || 0);
     };
-    const onPlay = () => setPlaying(true);
-    const onPause = () => setPlaying(false);
+    const onPlay = () => {
+      setPlaying(true);
+      setBleBrightness(lastBrightness);
+    };
+    const onPause = () => {
+      setLastBrightness(bleBrightness);
+      setPlaying(false);
+      setBleBrightness(0);
+      // send one black frame immediately
+      if (isConnected) {
+        const off = Array.from({ length: ledCount }, () => [0, 0, 0] as [number, number, number]);
+        void sendData(off);
+        void sendStrobe(0);
+      }
+    };
     const onEnded = () => {
+      setLastBrightness(bleBrightness);
       setPlaying(false);
       setCurrent(0);
+      setBleBrightness(0);
+      // turn device off at end
+      if (isConnected) {
+        const off = Array.from({ length: ledCount }, () => [0, 0, 0] as [number, number, number]);
+        void sendData(off);
+        void sendStrobe(0);
+      }
     };
 
     a.addEventListener("loadedmetadata", onLoaded);
@@ -117,7 +142,7 @@ export function SessionPlayerUI({ session }: Props) {
       a.removeEventListener("pause", onPause);
       a.removeEventListener("ended", onEnded);
     };
-  }, []);
+  }, [bleBrightness, isConnected, ledCount, sendData, sendStrobe, lastBrightness]);
 
   // Create analyser + RAF loop once (on first play)
   const setupAnalyserIfNeeded = () => {
@@ -155,9 +180,7 @@ export function SessionPlayerUI({ session }: Props) {
       const bEnd = Math.max(2, Math.floor(n * 0.12));
       const mEnd = Math.max(bEnd + 1, Math.floor(n * 0.45));
 
-      let sumB = 0,
-          sumM = 0,
-          sumT = 0;
+      let sumB = 0, sumM = 0, sumT = 0;
       for (let i = 0; i < bEnd; i++) sumB += bins[i];
       for (let i = bEnd; i < mEnd; i++) sumM += bins[i];
       for (let i = mEnd; i < n; i++) sumT += bins[i];
@@ -191,51 +214,49 @@ export function SessionPlayerUI({ session }: Props) {
 
       // Render a frame for the selected pattern
       const patFrame = renderPattern(patternId, {
-        rows,
-        cols,
-        t,
-        bass,
-        mid,
-        treble,
-        energy,
+        rows, cols, t, bass, mid, treble, energy,
       });
 
       // Update preview (full brightness)
       setFrame(patFrame);
 
-      // ---- STROBE CONTROL ----
-      // Auto: map energy -> Hz (0..12 Hz), smooth & rate-limit updates
+      // ---- STROBE CONTROL (device 0..100 Hz) + PREVIEW (cap ~30 Hz) ----
       const strobeModeNow = strobeModeRef.current;
-      if (isConnected && (strobeModeNow === "auto" || strobeModeNow === "manual")) {
-        if (strobeModeNow === "auto") {
-          if (now - lastStrobeUpdateMs > 200) {
-            // simple easing + clamp
-            const targetHz = Math.min(12, Math.max(0, (energy / 255) * 12));
-            const roundedHz = Math.round(targetHz * 10) / 10; // 0.1 Hz granularity
+      let desiredHz = 0;
 
-            if (roundedHz !== lastSentHz) {
-              void sendStrobe(roundedHz);
-              lastSentHz = roundedHz;
-            }
-            lastStrobeUpdateMs = now;
-          }
-        } else {
-          // manual
-          const manual = Math.max(0,  manualHzRef.current);
-          if (manual !== lastSentHz) {
-            void sendStrobe(manual);
-            lastSentHz = manual;
-          }
+      if (strobeModeNow === "auto") {
+        // Map energy → 0..100 Hz
+        const targetHz = Math.max(0, Math.min(100, (energy / 255) * 100));
+        // smooth a bit & quantize to 0.5 Hz to reduce BLE spam
+        desiredHz = Math.round(targetHz * 2) / 2;
+        if (isConnected && (now - lastStrobeUpdateMs > 120) && desiredHz !== lastSentHz) {
+          void sendStrobe(desiredHz);
+          lastSentHz = desiredHz;
+          lastStrobeUpdateMs = now;
         }
-      } else if (strobeModeNow === "off" && isConnected && lastSentHz !== 0) {
-        void sendStrobe(0);
-        lastSentHz = 0;
+      } else if (strobeModeNow === "manual") {
+        desiredHz = Math.max(0, Math.min(100, manualHzRef.current));
+        if (isConnected && desiredHz !== lastSentHz) {
+          void sendStrobe(desiredHz);
+          lastSentHz = desiredHz;
+          lastStrobeUpdateMs = now;
+        }
+      } else {
+        desiredHz = 0;
+        if (isConnected && lastSentHz !== 0) {
+          void sendStrobe(0);
+          lastSentHz = 0;
+          lastStrobeUpdateMs = now;
+        }
       }
+
+      // preview can't show > ~30 Hz on a 60 Hz display; cap for UI only
+      const previewHz = Math.min(30, desiredHz);
+      setPreviewStrobeHz(previewHz);
 
       // Send to device (dimmed) ~30 fps
       if (isConnected && now - lastSendMs >= 33) {
         const dim = bleBrightnessRef.current;
-        // Convert flat Uint8Array to array of [r,g,b] expected by sendData
         const scaled: number[][] = new Array(ledCount);
         if (dim <= 0) {
           for (let i = 0; i < ledCount; i++) scaled[i] = [0, 0, 0];
@@ -272,9 +293,7 @@ export function SessionPlayerUI({ session }: Props) {
   };
 
   // Seek handlers (avoid fighting timeupdate while dragging)
-  const onSeekStart = () => {
-    seeking.current = true;
-  };
+  const onSeekStart = () => { seeking.current = true; };
   const onSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setCurrent(Number(e.target.value));
   };
@@ -289,9 +308,7 @@ export function SessionPlayerUI({ session }: Props) {
 
   // Cleanup
   useEffect(() => {
-    return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    };
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
   }, []);
 
   const progress = duration ? (current / duration) * 100 : 0;
@@ -413,14 +430,20 @@ export function SessionPlayerUI({ session }: Props) {
             </div>
             {strobeMode === "auto" && (
                 <p className="text-xs text-slate-500">
-                  Auto maps music energy to 0–12&nbsp;Hz and updates smoothly.
+                  Auto maps music energy to <strong>0–100 Hz</strong> and updates smoothly.
                 </p>
             )}
           </div>
 
-          {/* Preview */}
+          {/* Preview (strobe shown visually, capped to ~30 Hz) */}
           <div className="mt-2 flex justify-center">
-            <ChromaPreview rows={rows} cols={cols} frame={frame} serpentine strobeHz={0} />
+            <ChromaPreview
+                rows={rows}
+                cols={cols}
+                frame={frame}
+                serpentine
+                strobeHz={previewStrobeHz}
+            />
           </div>
 
           {/* Wake Lock */}

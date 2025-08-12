@@ -1,4 +1,3 @@
-// components/session/ChromaPreview.tsx
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -19,7 +18,7 @@ export default function ChromaPreview({
     cols: number;
     frame: LedRGBFrame;
     serpentine?: boolean;
-    strobeHz?: number;
+    strobeHz?: number; // 0–100 Hz
     cellSize?: number;
     gap?: number;
     className?: string;
@@ -28,18 +27,25 @@ export default function ChromaPreview({
 
     const [gate, setGate] = useState(1);
     const rafRef = useRef<number | null>(null);
+
     useEffect(() => {
         if (!strobeHz || strobeHz <= 0) {
             setGate(1);
             if (rafRef.current) cancelAnimationFrame(rafRef.current);
             return;
         }
+
         const start = performance.now();
         const loop = () => {
-            const t = (performance.now() - start) / 1000;
-            setGate(Math.sin(2 * Math.PI * strobeHz * t) > 0 ? 1 : 0.35);
+            const t = (performance.now() - start) / 1000; // seconds
+            // Period of one cycle
+            const period = 1 / strobeHz;
+            // Square wave: on first half, off second half
+            const phase = (t % period) / period;
+            setGate(phase < 0.5 ? 1 : 0);
             rafRef.current = requestAnimationFrame(loop);
         };
+
         rafRef.current = requestAnimationFrame(loop);
         return () => {
             if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -49,6 +55,7 @@ export default function ChromaPreview({
 
     const colors = useMemo(() => {
         const out: string[] = new Array(total);
+
         const mapIndex = (i: number) => {
             if (!serpentine) return i;
             const y = Math.floor(i / cols);
@@ -56,6 +63,7 @@ export default function ChromaPreview({
             const sx = y % 2 === 1 ? cols - 1 - x : x;
             return y * cols + sx;
         };
+
         for (let i = 0; i < total; i++) {
             const t = mapIndex(i);
             const base = i * 3;
