@@ -25,13 +25,15 @@ interface Props {
 const fmt = (s: number) =>
     `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, "0")}`;
 
+type StrobeMode = "off" | "auto" | "manual";
+
 export function SessionPlayerUI({ session }: Props) {
   // Keep the screen awake (helps JS run on mobile)
   const [keepAwake, setKeepAwake] = useState(true);
   useWakeLock(keepAwake);
 
   // BLE
-  const { sendData, isConnected } = useBLE();
+  const { sendData, sendStrobe, isConnected } = useBLE();
 
   // Audio + analyser
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -69,6 +71,23 @@ export function SessionPlayerUI({ session }: Props) {
 
   const [patternLabel, setPatternLabel] = useState<string>("AUTO");
   const currentPatternRef = useRef<PatternId>("shift");
+
+  // STROBE: Off / Auto / Manual
+  const [strobeMode, setStrobeMode] = useState<StrobeMode>("off");
+  const strobeModeRef = useRef<StrobeMode>(strobeMode);
+  useEffect(() => {
+    strobeModeRef.current = strobeMode;
+    // On mode change, send immediate update (stop if off)
+    if (strobeMode === "off") {
+      if (isConnected) void sendStrobe(0);
+    }
+  }, [strobeMode, isConnected, sendStrobe]);
+
+  const [manualHz, setManualHz] = useState<number>(8);
+  const manualHzRef = useRef(manualHz);
+  useEffect(() => {
+    manualHzRef.current = manualHz;
+  }, [manualHz]);
 
   // Bind audio element events
   useEffect(() => {
@@ -119,6 +138,8 @@ export function SessionPlayerUI({ session }: Props) {
     const bins = new Uint8Array(analyser.frequencyBinCount);
     let lastFrameMs = 0;
     let lastSendMs = 0;
+    let lastStrobeUpdateMs = 0;
+    let lastSentHz = -1; // cache to avoid spamming same value
 
     const loop = () => {
       rafRef.current = requestAnimationFrame(loop);
@@ -181,6 +202,35 @@ export function SessionPlayerUI({ session }: Props) {
 
       // Update preview (full brightness)
       setFrame(patFrame);
+
+      // ---- STROBE CONTROL ----
+      // Auto: map energy -> Hz (0..12 Hz), smooth & rate-limit updates
+      const strobeModeNow = strobeModeRef.current;
+      if (isConnected && (strobeModeNow === "auto" || strobeModeNow === "manual")) {
+        if (strobeModeNow === "auto") {
+          if (now - lastStrobeUpdateMs > 200) {
+            // simple easing + clamp
+            const targetHz = Math.min(12, Math.max(0, (energy / 255) * 12));
+            const roundedHz = Math.round(targetHz * 10) / 10; // 0.1 Hz granularity
+
+            if (roundedHz !== lastSentHz) {
+              void sendStrobe(roundedHz);
+              lastSentHz = roundedHz;
+            }
+            lastStrobeUpdateMs = now;
+          }
+        } else {
+          // manual
+          const manual = Math.max(0,  manualHzRef.current);
+          if (manual !== lastSentHz) {
+            void sendStrobe(manual);
+            lastSentHz = manual;
+          }
+        }
+      } else if (strobeModeNow === "off" && isConnected && lastSentHz !== 0) {
+        void sendStrobe(0);
+        lastSentHz = 0;
+      }
 
       // Send to device (dimmed) ~30 fps
       if (isConnected && now - lastSendMs >= 33) {
@@ -328,6 +378,44 @@ export function SessionPlayerUI({ session }: Props) {
                   className="w-full"
               />
             </div>
+          </div>
+
+          {/* STROBE controls */}
+          <div className="rounded-lg border p-3 space-y-2">
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-slate-600">Strobe</span>
+              <select
+                  value={strobeMode}
+                  onChange={(e) => setStrobeMode(e.target.value as StrobeMode)}
+                  className="border rounded-md px-2 py-1 text-sm"
+              >
+                <option value="off">Off</option>
+                <option value="auto">Auto (beat)</option>
+                <option value="manual">Manual</option>
+              </select>
+
+              {strobeMode === "manual" && (
+                  <div className="ml-auto w-56">
+                    <label className="block text-xs text-gray-600 mb-1">
+                      Strobe Hz: {manualHz.toFixed(1)}
+                    </label>
+                    <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={0.5}
+                        value={manualHz}
+                        onChange={(e) => setManualHz(Number(e.target.value))}
+                        className="w-full"
+                    />
+                  </div>
+              )}
+            </div>
+            {strobeMode === "auto" && (
+                <p className="text-xs text-slate-500">
+                  Auto maps music energy to 0–12&nbsp;Hz and updates smoothly.
+                </p>
+            )}
           </div>
 
           {/* Preview */}
