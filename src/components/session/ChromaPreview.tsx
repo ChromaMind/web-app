@@ -11,8 +11,8 @@ export default function ChromaPreview({
                                           frame,
                                           serpentine = true,
                                           strobeHz,
-                                          cellSize = 15,
-                                          gap = 3,
+                                          cellSize = 20,
+                                          gap = 10,
                                           className = "",
                                       }: {
     rows: number;
