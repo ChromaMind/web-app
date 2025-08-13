@@ -17,7 +17,7 @@ interface PlayerContextType extends PlayerState {
   seek: (time: number) => void;
   loadSession: (session: SessionDetails) => void;
   skip: (deltaSeconds: number) => void;
-  audioRef: React.RefObject<HTMLAudioElement>;
+  audioRef: React.RefObject<HTMLAudioElement | null>;
 }
 
 const PlayerContext = createContext<PlayerContextType | undefined>(undefined);

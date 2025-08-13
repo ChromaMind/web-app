@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import type { Session } from "@/app/(main)/trips/page";
+import type { Session } from "@/services/nftService";
 
 // ... imports
 export function SessionCard({ session }: { session: Session }) {

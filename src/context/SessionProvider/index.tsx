@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useState, ReactNode } from 'react';
-import type { Session } from '@/app/(main)/trips/page'; // Reuse the Session type
+import type { Session } from '@/services/nftService'; // Reuse the Session type
 
 // Define the shape of the context data
 interface SessionContextType {
