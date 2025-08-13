@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { DeviceStatusIndicator } from "@/components/ble/DeviceStatusIndicator";
 import { useHasMounted } from "@/hooks/useHasMounted";
+import { UserCircleIcon } from "@heroicons/react/24/outline";
+
 
 export function Header() {
   const hasMounted = useHasMounted();
@@ -27,14 +29,20 @@ export function Header() {
             </Link>
           </nav>
 
-          {/* Right-side Icons - Hamburger Menu is removed */}
+          {/* Right-side Icons */}
           <div className="flex items-center gap-4">
             {hasMounted && (
               <>
                 <div className="hidden sm:flex">
                   <DeviceStatusIndicator />
                 </div>
-                <w3m-button />
+                <Link 
+                  href="/settings" 
+                  className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-full transition-colors"
+                  title="Settings & Account"
+                >
+                  <UserCircleIcon className="w-6 h-6" />
+                </Link>
               </>
             )}
           </div>

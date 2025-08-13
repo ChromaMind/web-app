@@ -1,5 +1,5 @@
 import { Header } from "@/components/core/Header";
-import { BottomDock } from "@/components/core/BottomDock"; // <-- Import the new dock
+import { PersistentPlayer } from "@/components/core/PersistentPlayer";
 import { ReactNode } from "react";
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -18,7 +18,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </main>
 
-      <BottomDock /> {/* <-- Add the dock component here */}
+      <PersistentPlayer />
     </div>
   );
 }
