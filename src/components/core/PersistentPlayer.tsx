@@ -170,53 +170,10 @@ export function PersistentPlayer() {
           >
                   <div className="space-y-6">
                                    {/* Device Control Dashboard */}
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                     <div className="grid grid-cols-1 gap-4">
                        {/* Device Connection */}
                        <DeviceControlPanel />
 
-                {/* LED Pattern Control */}
-                <div className="bg-slate-50 rounded-lg p-4">
-                  <h3 className="text-sm font-semibold text-slate-900 mb-4">LED Pattern</h3>
-                  
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-xs text-slate-600 mb-1">Pattern Type</label>
-                      <select 
-                        className="w-full p-2 border border-slate-200 rounded text-xs"
-                        defaultValue="auto"
-                      >
-                        <option value="auto">Auto (Beat Reactive)</option>
-                        <option value="arrow">↔ Arrow</option>
-                        <option value="double-arrow">⇄ Double Arrow</option>
-                        <option value="expand">Expanding</option>
-                        <option value="top">Top Row</option>
-                        <option value="bottom">Bottom Row</option>
-                        <option value="top-bottom">Top + Bottom</option>
-                        <option value="shift">Shift</option>
-                        <option value="sparkle">Random Sparkle</option>
-                        <option value="white">Full White</option>
-                        <option value="inward">Inward</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs text-slate-600 mb-1">Brightness Level</label>
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        step="5"
-                        defaultValue="80"
-                        className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                      />
-                      <div className="flex justify-between text-xs text-slate-500 mt-1">
-                        <span>0%</span>
-                        <span>50%</span>
-                        <span>100%</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
               </div>
 
               {/* Audio Control */}
