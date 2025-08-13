@@ -6,6 +6,7 @@ import { useEffect, useState, ReactNode } from 'react';
 import dynamic from 'next/dynamic'; // <-- Import dynamic
 
 import { SessionProvider } from '@/context/SessionProvider';
+import { PlayerProvider } from '@/context/PlayerProvider';
 import { AppShell } from '@/components/layout/AppShell';
 import { Loader } from '@/components/core/Loader';
 
@@ -50,9 +51,11 @@ export default function MainLayout({ children }: { children: ReactNode }) {
   return (
     <BLEProvider>
       <SessionProvider>
-        <AppShell>
-          {children}
-        </AppShell>
+        <PlayerProvider>
+          <AppShell>
+            {children}
+          </AppShell>
+        </PlayerProvider>
       </SessionProvider>
     </BLEProvider>
   );
