@@ -13,7 +13,7 @@ export function SessionCard({ session }: { session: Session }) {
         <div className="absolute inset-0 bg-black/20"></div>
       </div>
       <div className="p-5">
-        <h3 className="text-xl font-bold text-slate-100">{session.name}</h3>
+        <h3 className="text-xl font-bold text-slate-900 ">{session.name}</h3>
         <p className="text-sm text-slate-400 mt-1 h-10">{session.description}</p>
         <div className="mt-6 flex justify-between items-center">
           <span className="text-xs font-mono text-slate-500">{session.duration} MIN</span>
