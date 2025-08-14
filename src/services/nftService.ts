@@ -168,10 +168,10 @@ export const getSessionsForOwner = async (ownerAddress: string): Promise<Session
     // Convert blockchain trips to session format
     return trips.map(trip => ({
       id: trip.id,
-      name: trip.metadata.name,
-      description: trip.metadata.description,
-      imageUrl: getPublicGatewayUrl(trip.metadata.image),
-      duration: 15, // Default duration, could be stored in metadata
+      name: trip.name,
+      description: trip.description,
+      imageUrl: getPublicGatewayUrl(trip.imageUrl),
+      duration: trip.duration || 15, // Use trip duration or default
     }));
   } catch (error) {
     console.error('Failed to fetch sessions from blockchain, using mock data:', error);
@@ -182,41 +182,7 @@ export const getSessionsForOwner = async (ownerAddress: string): Promise<Session
   }
 };
 
-/**
- * Get session details (legacy function for My Trips page)
- */
-export const getTripByCollectionAddress = async (collectionAddress: string): Promise<Trip | null> => {
-  try {
-    // Try to get real blockchain data first
-    const provider = new ethers.JsonRpcProvider(DEFAULT_CONTRACT_CONFIG.rpcUrl);
-    const contractService = createContractService(DEFAULT_CONTRACT_CONFIG, provider as any);
-    const trips = await contractService.getTokensForCollection(collectionAddress);
-    
-    if (trips.length > 0) {
-      // Convert blockchain trip to session details format
-      return {
-        id: trips[0].id,
-        name: trips[0].name,
-        description: trips[0].description,
-        imageUrl: getPublicGatewayUrl(trips[0].imageUrl),
-        creator: trips[0].creator,
-        category: 'Relaxation' as const, // Default category
-        tokenId: trips[0].id,
-        collectionAddress: trips[0].contractAddress,
-        owner: trips[0].owner,
-        price: trips[0].price.toString(),
-        royaltyPercentage: trips[0].royaltyPercentage || 0,
-        mintedAt: trips[0].createdAt,
-      };
-    }
-  } catch (error) {
-    console.error('Failed to fetch session details from blockchain:', error);
-  }
 
-  // Fallback to mock data
-  await new Promise(resolve => setTimeout(resolve, 500));
-  return null;
-};
 export const getCollection = async (collectionAddress: string): Promise<Collection | null> => {
   try {
     const provider = new ethers.JsonRpcProvider(DEFAULT_CONTRACT_CONFIG.rpcUrl);

@@ -20,6 +20,8 @@ export interface Collection {
   royaltyPercentage?: number; // Creator royalty percentage
   tags?: string[];
   category?: string;
+  intensity?: string; // Trip intensity level
+  duration?: number; // Trip duration in minutes
 }
 
 export interface CollectionMetadata {

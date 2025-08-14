@@ -4,7 +4,7 @@ import { useAccount } from 'wagmi';
 import { getTripsForOwner } from '@/services/nftService';
 import type { Trip } from '@/types/nft';
 import { Loader } from '@/components/core/Loader';
-import { OwnedNFTCard } from '@/components/nft/OwnedNFTCard';
+
 import { UserIcon } from '@heroicons/react/24/outline';
 import { TripCard } from '@/components/nft/TripCard';
 
