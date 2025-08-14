@@ -1,21 +1,21 @@
 "use client";
 
 import React, { createContext, useContext, useRef, useState, useEffect, ReactNode, useCallback } from 'react';
-import type { SessionDetails } from '@/services/nftService';
+import type { Trip } from '@/types/nft';
 
 interface PlayerState {
   isPlaying: boolean;
   currentTime: number;
   duration: number;
   isReady: boolean;
-  currentSession: SessionDetails | null;
+  currentSession: Trip | null;
 }
 
 interface PlayerContextType extends PlayerState {
   play: () => Promise<void>;
   pause: () => void;
   seek: (time: number) => void;
-  loadSession: (session: SessionDetails) => void;
+  loadTrip: (session: Trip) => void;
   skip: (deltaSeconds: number) => void;
   audioRef: React.RefObject<HTMLAudioElement | null>;
 }
@@ -28,7 +28,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isReady, setIsReady] = useState(false);
-  const [currentSession, setCurrentSession] = useState<SessionDetails | null>(null);
+  const [currentSession, setCurrentSession] = useState<Trip | null>(null);
 
   // Initialize audio element
   useEffect(() => {
@@ -72,7 +72,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const loadSession = useCallback((session: SessionDetails) => {
+  const loadTrip = useCallback((session: Trip) => {
     if (audioRef.current) {
       audioRef.current.src = session.audioUrl;
       audioRef.current.load();
@@ -122,7 +122,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     play,
     pause,
     seek,
-    loadSession,
+    loadTrip,
     skip,
     audioRef,
   };

@@ -57,6 +57,8 @@ export function useContractService() {
     return await service.getTokenById(collectionAddress, tokenId);
   }, [contractService]);
 
+
+
   const getDeployedCollections = useCallback(async () => {
     if (!contractService) {
       throw new Error('Wallet not connected');
@@ -77,6 +79,7 @@ export function useContractService() {
     getCollection,
     getTokensForCollection,
     getTokenById,
+
     getDeployedCollections,
     
     // NFT methods

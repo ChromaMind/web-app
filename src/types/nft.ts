@@ -49,6 +49,9 @@ export interface Trip extends Collection{
   mintedAt: string;
   isListed?: boolean;
   listingPrice?: string;
+  experienceFee: number;
+  audioUrl: string;
+  steramingUrl:string;
 }
 
 export interface TokenMetadata {

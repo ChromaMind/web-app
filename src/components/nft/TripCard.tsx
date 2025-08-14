@@ -3,7 +3,8 @@ import { useState } from 'react';
 import { useAccount } from 'wagmi';
 import { ethers } from 'ethers';
 import type { Trip } from '@/types/nft';
-import { EyeIcon, HeartIcon, MusicalNoteIcon, UsersIcon } from '@heroicons/react/24/outline';
+import { EyeIcon, MusicalNoteIcon, UsersIcon } from '@heroicons/react/24/outline';
+import { PlayIcon } from '@heroicons/react/24/solid';
 import Link from 'next/link';
 import Image from 'next/image';
 
@@ -33,7 +34,6 @@ export function TripCard({ trip }: TripCardProps) {
         trip.creator.toLowerCase() === address.toLowerCase();
     const isOwner = isConnected && address &&
         trip.owner.toLowerCase() === address.toLowerCase();
-
     const handleLike = () => {
         setIsLiked(!isLiked);
     };
@@ -84,33 +84,6 @@ export function TripCard({ trip }: TripCardProps) {
                     className="absolute inset-0 bg-gradient-to-br from-purple-100 to-blue-100"
                     style={{ zIndex: -1 }}
                 />
-
-                {/* Overlay with collection info */}
-                <div className={`absolute inset-0 transition-all duration-300 ${isHovered ? 'bg-black bg-opacity-30' : 'bg-opacity-0'
-                    }`}>
-                    <div className={`absolute bottom-4 left-4 right-4 text-white transition-opacity duration-300 ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <MusicalNoteIcon className="w-5 h-5" />
-                                <span className="text-sm font-medium">
-                                    {trip.currentSupply} / {trip.maxSupply}
-                                </span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <UsersIcon className="w-4 h-4" />
-                                <span className="text-sm">
-                                    {Math.floor(trip.currentSupply * 0.8)} owners
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Status badge */}
-                <div className={`absolute top-3 left-3 px-2 py-1 rounded-full text-xs font-medium ${status.bg} ${status.color}`}>
-                    {status.text}
-                </div>
-
                 {/* Like button */}
                 <button
                     onClick={handleLike}
@@ -119,7 +92,7 @@ export function TripCard({ trip }: TripCardProps) {
                             : 'bg-white bg-opacity-90 text-gray-600 hover:bg-opacity-100'
                         }`}
                 >
-                    <HeartIcon className="w-4 h-4" />
+                    {isOwner? <PlayIcon className="w-4 h-4" />:<EyeIcon className="w-4 h-4" />}
                 </button>
             </div>
 
@@ -128,7 +101,7 @@ export function TripCard({ trip }: TripCardProps) {
                 {/* Title and Symbol */}
                 <div className="mb-3">
                     <h3 className="font-semibold text-slate-900 text-lg mb-1">
-                        {trip.name}
+                        {trip.name} #{trip.tokenId}
                     </h3>
                 </div>
 
@@ -162,6 +135,12 @@ export function TripCard({ trip }: TripCardProps) {
                         </span>
                     </div>
                     <div>
+                        <span className="text-slate-500">Experience Fee:</span>
+                        <span className="ml-2 font-medium text-slate-900">
+                            {trip.experienceFee || 0} ETH
+                        </span>
+                    </div>
+                    <div>
                         <span className="text-slate-500">Royalty:</span>
                         <span className="ml-2 font-medium text-slate-900">
                             {(trip.royaltyPercentage || 1000) / 100}%
@@ -171,23 +150,13 @@ export function TripCard({ trip }: TripCardProps) {
 
                 {/* Action Buttons */}
                 <div className="flex gap-2">
-                    {isOwner ? (
                         <Link
-                            href={`/trips/mine/${trip.collectionAddress}`}
+                            href={`/collection/${trip.collectionAddress}/${trip.tokenId}`}
                             className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
                         >
                             <EyeIcon className="w-4 h-4" />
-                            Play Trip
+                            Experience Trip
                         </Link>
-                    ) : (
-                        <Link
-                            href={`/trips/${trip.collectionAddress}`}
-                            className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
-                        >
-                            <EyeIcon className="w-4 h-4" />
-                            View Trip
-                        </Link>
-                    )}
 
                     {isCreator && (
                         <button className="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 transition-colors">

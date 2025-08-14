@@ -302,6 +302,7 @@ export class ContractService {
         }
       });
 
+      console.log('event', event)
       if (event) {
         const parsed = factory.interface.parseLog(event);
         return parsed?.args?.[0]; // newCollectionAddress
@@ -831,6 +832,8 @@ export class ContractService {
     }
   }
 }
+
+
 
 // Factory function to create contract service
 export function createContractService(config: ContractConfig, signer: ethers.Signer): ContractService {

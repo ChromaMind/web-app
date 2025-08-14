@@ -16,7 +16,9 @@ import {
 } from '@heroicons/react/24/outline';
 
 import { createContractService, DEFAULT_CONTRACT_CONFIG } from '@/services/contractService';
-import type { Collection, Token } from '@/types/nft';
+import type { Collection, Trip } from '@/types/nft';
+import { getCollection, getTripForCollection } from '@/services/nftService';
+import { TripCard } from '@/components/nft/TripCard';
 
 export default function CollectionPage() {
   const params = useParams();
@@ -24,7 +26,7 @@ export default function CollectionPage() {
   const contractService = useContractService();
   
   const [collection, setCollection] = useState<Collection | null>(null);
-  const [tokens, setTokens] = useState<Token[]>([]);
+  const [trips, setTrips] = useState<Trip[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [mintAmount, setMintAmount] = useState(1);
   const [isMinting, setIsMinting] = useState(false);
@@ -43,10 +45,6 @@ export default function CollectionPage() {
     return parseFloat(price).toFixed(4);
   };
 
-  const userOwnedTokens = tokens.filter(token => 
-    token.owner.toLowerCase() === address?.toLowerCase()
-  );
-
   useEffect(() => {
     if (contractAddress) {
       loadCollectionData();
@@ -57,17 +55,13 @@ export default function CollectionPage() {
     try {
       setIsLoading(true);
       
-      // Create a provider for read-only operations
-      const provider = new ethers.JsonRpcProvider(DEFAULT_CONTRACT_CONFIG.rpcUrl);
-      const contractService = createContractService(DEFAULT_CONTRACT_CONFIG, provider as any);
-      
       // Load collection details
-      const collectionData = await contractService.getCollection(contractAddress);
+      const collectionData = await getCollection(contractAddress);
       setCollection(collectionData);
       
-      // Load tokens for this collection
-      const tokensData = await contractService.getTokensForCollection(contractAddress);
-      setTokens(tokensData);
+      // Load trips for this collection
+      const tripsData = await getTripForCollection(contractAddress);
+      setTrips(tripsData);
     } catch (error) {
       console.error('Error loading collection data:', error);
     } finally {
@@ -281,24 +275,13 @@ export default function CollectionPage() {
               </div>
             </div>
 
-            {/* Owned Tokens */}
-            {userOwnedTokens.length > 0 && (
+            {/* Trips Minted */}
+            {trips.length > 0 && (
               <div className="bg-white rounded-xl shadow-lg p-6">
-                <h2 className="text-xl font-semibold text-slate-900 mb-4">Your Tokens</h2>
+                <h2 className="text-xl font-semibold text-slate-900 mb-4">Trips Minted</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {userOwnedTokens.map((token) => (
-                    <div key={token.id} className="border border-slate-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="font-medium text-slate-900">{token.metadata.name}</h3>
-                        <span className="text-sm text-slate-500">#{token.tokenId}</span>
-                      </div>
-                      <p className="text-sm text-slate-600 mb-3 line-clamp-2">
-                        {token.metadata.description}
-                      </p>
-                      <div className="text-xs text-slate-500">
-                        Minted: {new Date(token.mintedAt).toLocaleDateString()}
-                      </div>
-                    </div>
+                  {trips.map((trip) => (
+                    <TripCard key={trip.id} trip={trip} />
                   ))}
                 </div>
               </div>

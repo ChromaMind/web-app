@@ -1,7 +1,8 @@
 import { ethers } from 'ethers';
 import { createContractService, DEFAULT_CONTRACT_CONFIG } from './contractService';
-import { getPublicGatewayUrl } from './ipfsService';
-import type { Collection, Token } from '@/types/nft';
+import { getFileFromIPFS, getPublicGatewayUrl } from './ipfsService';
+import type { Collection, Trip } from '@/types/nft';
+
 
 // --- TYPES ---
 export type SessionComment = {
@@ -107,14 +108,14 @@ export async function getCollections(): Promise<Collection[]> {
     return collections.filter(Boolean) as Collection[];
   } catch (error) {
     console.error('Failed to fetch collections from blockchain, using mock data:', error);
-    return getMockCollections();
+    return [];
   }
 }
 
 /**
  * Get all trips (tokens) from blockchain with fallback to mock data
  */
-export async function getTrips(): Promise<Token[]> {
+export async function getTrips(): Promise<Trip[]> {
   try {
     // Create a proper provider for read-only operations
     const provider = new ethers.JsonRpcProvider(DEFAULT_CONTRACT_CONFIG.rpcUrl);
@@ -123,12 +124,11 @@ export async function getTrips(): Promise<Token[]> {
     const contractService = createContractService(DEFAULT_CONTRACT_CONFIG, provider as any);
     const collections = await getCollections();
     
-    const allTrips: Token[] = [];
+    const allTrips: Trip[] = [];
     for (const collection of collections) {
       try {
-        const tokens = await contractService.getTokensForCollection(collection.contractAddress);
-        console.log('tokens', tokens);
-        allTrips.push(...tokens);
+        const trips = await contractService.getTokensForCollection(collection.contractAddress);
+        allTrips.push(...trips);
       } catch (error) {
         console.error(`Error fetching tokens for collection ${collection.contractAddress}:`, error);
       }
@@ -137,14 +137,14 @@ export async function getTrips(): Promise<Token[]> {
     return allTrips;
   } catch (error) {
     console.error('Failed to fetch trips from blockchain, using mock data:', error);
-    return getMockTrips();
+    return [];
   }
 }
 
 /**
  * Get trips owned by a specific address
  */
-export async function getTripsForOwner(ownerAddress: string): Promise<Token[]> {
+export async function getTripsForOwner(ownerAddress: string): Promise<Trip[]> {
   try {
     const allTrips = await getTrips();
     return allTrips.filter(trip => 
@@ -184,26 +184,28 @@ export const getSessionsForOwner = async (ownerAddress: string): Promise<Session
 /**
  * Get session details (legacy function for My Trips page)
  */
-export const getSessionDetails = async (sessionId: string): Promise<SessionDetails | null> => {
+export const getTripByCollectionAddress = async (collectionAddress: string): Promise<Trip | null> => {
   try {
     // Try to get real blockchain data first
-    const trips = await getTrips();
-    const trip = trips.find(t => t.id === sessionId);
+    const provider = new ethers.JsonRpcProvider(DEFAULT_CONTRACT_CONFIG.rpcUrl);
+    const contractService = createContractService(DEFAULT_CONTRACT_CONFIG, provider as any);
+    const trips = await contractService.getTokensForCollection(collectionAddress);
     
-    if (trip) {
+    if (trips.length > 0) {
       // Convert blockchain trip to session details format
       return {
-        id: trip.id,
-        name: trip.metadata.name,
-        description: trip.metadata.description,
-        imageUrl: getPublicGatewayUrl(trip.metadata.image),
-        duration: 15, // Default duration
-        creator: trip.creator,
+        id: trips[0].id,
+        name: trips[0].name,
+        description: trips[0].description,
+        imageUrl: getPublicGatewayUrl(trips[0].imageUrl),
+        creator: trips[0].creator,
         category: 'Relaxation' as const, // Default category
-        intensity: 'Mild' as const, // Default intensity
-        audioUrl: trip.metadata.audio || '/audios/rave.mp3',
-        events: [], // Would need to be stored in metadata
-        comments: [] // Would need to be stored in metadata
+        tokenId: trips[0].id,
+        collectionAddress: trips[0].contractAddress,
+        owner: trips[0].owner,
+        price: trips[0].price.toString(),
+        royaltyPercentage: trips[0].royaltyPercentage || 0,
+        mintedAt: trips[0].createdAt,
       };
     }
   } catch (error) {
@@ -212,32 +214,133 @@ export const getSessionDetails = async (sessionId: string): Promise<SessionDetai
 
   // Fallback to mock data
   await new Promise(resolve => setTimeout(resolve, 500));
-  return MOCK_SESSION_DETAILS[sessionId] || null;
+  return null;
+};
+export const getCollection = async (collectionAddress: string): Promise<Collection | null> => {
+  try {
+    const provider = new ethers.JsonRpcProvider(DEFAULT_CONTRACT_CONFIG.rpcUrl);
+    const contractService = createContractService(DEFAULT_CONTRACT_CONFIG, provider as any);
+    const collection = await contractService.getCollection(collectionAddress);
+    return collection;
+  } catch (error) {
+    console.error('Failed to fetch collection from blockchain:', error);
+    return null;
+  }
+};
+export const getTripForCollection = async (collectionAddress: string): Promise<Trip[]> => {
+  try {
+  const provider = new ethers.JsonRpcProvider(DEFAULT_CONTRACT_CONFIG.rpcUrl);
+  const contractService = createContractService(DEFAULT_CONTRACT_CONFIG, provider as any);
+  const trips = await contractService.getTokensForCollection(collectionAddress);
+  return trips;
+  } catch (error) {
+    console.error('Failed to fetch trips for collection:', error);
+    return [];
+  }
 };
 
-// --- MOCK DATA HELPERS (Fallback) ---
-
-function getMockCollections(): Collection[] {
-  return [];
-}
-
-function getMockTrips(): Token[] {
-  return [
-    {
-      id: '1',
-      tokenId: '1',
-      collectionAddress: '0x1234567890123456789012345678901234567890',
-      owner: '0xabcdef1234567890abcdef1234567890abcdef12',
-      creator: '0xabcdef1234567890abcdef1234567890abcdef12',
-      metadata: {
-        name: 'Rave in the Dark #1',
-        description: 'An electrifying electronic music experience with synchronized LED patterns',
-        image: '/images/forest_focus.png',
-        audio: '/audios/rave.mp3',
-        pattern: 'QmPattern1234567890abcdef1234567890abcdef'
-      },
-      mintedAt: '2024-01-15T10:00:00Z',
-      isListed: false
+/**
+ * Get trip data by token ID from a collection contract
+ * @param collectionAddress - The collection contract address
+ * @param tokenId - The token ID to fetch
+ * @returns Trip data with metadata
+ */
+export async function getTripByTokenId(
+  collectionAddress: string,
+  tokenId: string
+): Promise<Trip | null> {
+  try {
+    // Use the working RPC URL
+    const provider = new ethers.JsonRpcProvider('https://lb.drpc.org/sepolia/AplHGB2v9khYpYVNxc5za0FG8GqzeK8R8IrYIgaNGuYu');
+    
+    // Basic ERC-721 ABI for tokenURI
+    const abi = [
+      {
+        "inputs": [{"type": "uint256", "name": "tokenId"}],
+        "name": "tokenURI",
+        "outputs": [{"type": "string"}],
+        "stateMutability": "view",
+        "type": "function"
+      }
+    ];
+    
+    const collection = new ethers.Contract(collectionAddress, abi, provider);
+    
+    console.log('Fetching tokenURI for:', { collectionAddress, tokenId });
+    
+    // Get the tokenURI for the specific token
+    const tokenURI = "bafkreifo6lohildni5g3b2sk3zowbqtxxghuj5jre74jw46g3nyj7uersq"
+    
+    
+    if (!tokenURI ) {
+      throw new Error('Token URI not found');
     }
-  ];
+    
+    // Check if it's already a full URL or just a hash
+    let metadataUrl = tokenURI;
+    if (tokenURI.startsWith('ipfs://')) {
+      metadataUrl = getPublicGatewayUrl(tokenURI);
+    } else if (!tokenURI.startsWith('http')) {
+      // If it's just a hash, construct the full URL
+      metadataUrl = `https://ivory-neat-unicorn-8.mypinata.cloud/ipfs/${tokenURI}`;
+    }
+    
+    
+    // Fetch the metadata from IPFS
+    const response = await fetch(metadataUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch metadata: ${response.statusText}`);
+    }
+    
+    const responseText = await response.text();
+    
+    let metadata;
+    try {
+      metadata = JSON.parse(responseText);
+    } catch (parseError) {
+      throw new Error('Invalid JSON response from metadata URL');
+    }
+    
+    console.log('Parsed metadata:', metadata);
+    console.log(metadata.audio)
+    
+    // Convert IPFS URIs to gateway URLs
+    const audioUrl = metadata.audio ? getPublicGatewayUrl(metadata.audio) : "";
+    console.log(audioUrl)
+    const streamingDataUrl = metadata.streaming_data ? getPublicGatewayUrl(metadata.streaming_data) : "";
+    console.log(streamingDataUrl)
+    const imageUrl = metadata.image ? getPublicGatewayUrl(metadata.image) : "";
+    console.log(imageUrl)
+    
+    return {
+      id: tokenId,
+      contractAddress: collectionAddress,
+        audioUrl: audioUrl,
+        steramingUrl: streamingDataUrl,
+        imageUrl: imageUrl,
+        name: metadata.name,
+        description: metadata.description,
+        creator: metadata.creator,
+        category: metadata.category,
+        experienceFee: metadata.experienceFee,
+        price: metadata.price,
+        royaltyPercentage: metadata.royaltyPercentage,
+        mintedAt: metadata.mintedAt,
+        tokenId: tokenId,
+        collectionAddress: collectionAddress,
+        owner: metadata.owner,
+        symbol: metadata.symbol,
+        maxSupply: metadata.maxSupply,
+        currentSupply: metadata.currentSupply,
+        audioCid: metadata.audioCid,
+        patternCid: metadata.patternCid,
+        metadataCid: metadata.metadataCid,
+        createdAt: metadata.createdAt,
+        isActive: metadata.isActive,
+        tags: metadata.tags,
+    };
+  } catch (error) {
+    console.error('Failed to get trip by token ID:', error);
+    throw error;
+  }
 }

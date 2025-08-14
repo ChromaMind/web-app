@@ -170,3 +170,6 @@ export async function testPinataConnection(): Promise<boolean> {
     return false;
   }
 }
+export async function getFileFromIPFS(hash: string): Promise<any> {
+  return await pinata.gateways.public.get(hash);
+}
