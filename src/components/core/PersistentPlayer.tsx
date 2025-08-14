@@ -74,11 +74,11 @@ export function PersistentPlayer() {
           <div className="max-w-7xl mx-auto flex items-center gap-4">
           {/* Session Info - Clickable to navigate to player page */}
           <div 
-            className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer hover:bg-slate-50 rounded-lg p-2 transition-colors"
+            className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer hover:bg-slate-50 rounded-lg p-2 transition-colors"
             onClick={() => router.push(`/collection/${currentSession.collectionAddress}/${currentSession.tokenId}`)}
             title="Click to view session details"
           >
-            <div className="w-12 h-12 bg-slate-200 rounded-lg overflow-hidden flex-shrink-0">
+            <div className="w-10 h-10 bg-slate-200 rounded-lg overflow-hidden flex-shrink-0">
               {currentSession.imageUrl && (
                 <img 
                   src={currentSession.imageUrl} 
@@ -88,63 +88,54 @@ export function PersistentPlayer() {
               )}
             </div>
             <div className="min-w-0">
-              <h3 className="font-semibold text-slate-900 truncate">{currentSession.name}</h3>
-              <p className="text-sm text-slate-500 truncate">by {currentSession.creator}</p>
+              <h3 className="text-sm font-medium text-slate-900 truncate">{currentSession.name}</h3>
+              <p className="text-xs text-slate-500 truncate">by {currentSession.creator}</p>
             </div>
           </div>
 
-          {/* Controls */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => skip(-10)}
-              className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-full"
-              title="Skip back 10s"
-            >
-              <BackwardIcon className="w-5 h-5" />
-            </button>
-            
-            <button
-              onClick={isPlaying ? pause : play}
-              className="p-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 flex-shrink-0"
-              title={isPlaying ? 'Pause' : 'Play'}
-            >
-              {isPlaying ? (
-                <PauseIcon className="w-6 h-6" />
-              ) : (
-                <PlayIcon className="w-6 h-6" />
-              )}
-            </button>
-            
-            <button
-              onClick={() => skip(10)}
-              className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-full"
-              title="Skip forward 10s"
-            >
-              <ForwardIcon className="w-5 h-5" />
-            </button>
+
+
+          {/* Progress Bar - Top Border */}
+          <div className="absolute top-0 left-0 right-0 h-1 bg-slate-200">
+            <div 
+              className="h-full bg-blue-600 transition-all duration-100"
+              style={{ width: `${progress}%` }}
+            />
+            <input
+              type="range"
+              min={0}
+              max={Math.floor(duration)}
+              step={1}
+              value={Math.floor(currentTime)}
+              onChange={handleSeek}
+              className="absolute top-0 left-0 w-full h-full opacity-0 cursor-pointer"
+            />
           </div>
 
-          {/* Progress */}
-          <div className="flex items-center gap-3 min-w-0 flex-1">
-            <span className="text-sm text-slate-600 w-12 text-right">
+          {/* Time Display and Controls - Perfectly Centered */}
+          <div className="flex items-center justify-center min-w-0 flex-1 relative">
+            {/* Current Time - Left Side */}
+            <span className="text-xs text-slate-600 w-10 text-right absolute left-0">
               {formatTime(currentTime)}
             </span>
-            <div className="flex-1 relative">
-              <input
-                type="range"
-                min={0}
-                max={Math.floor(duration)}
-                step={1}
-                value={Math.floor(currentTime)}
-                onChange={handleSeek}
-                className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-              />
-              <div 
-                className="absolute top-0 left-0 h-1 bg-blue-600 rounded-lg pointer-events-none"
-                style={{ width: `${progress}%` }}
-              />
+
+            {/* Controls - Perfectly Centered */}
+            <div className="flex items-center justify-center">
+              <button
+                onClick={isPlaying ? pause : play}
+                className="p-2 bg-blue-500 hover:bg-blue-600 text-white rounded-full transition-colors"
+                title={isPlaying ? "Pause" : "Play"}
+              >
+                {isPlaying ? (
+                  <PauseIcon className="w-5 h-5" />
+                ) : (
+                  <PlayIcon className="w-5 h-5" />
+                )}
+              </button>
             </div>
-            <span className="text-sm text-slate-600 w-12">
+
+            {/* Total Time - Right Side */}
+            <span className="text-xs text-slate-600 w-10 text-left absolute right-0">
               {formatTime(duration)}
             </span>
           </div>
