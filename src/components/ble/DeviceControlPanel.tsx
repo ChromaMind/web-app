@@ -28,7 +28,7 @@ export function DeviceControlPanel() {
     // UI state
     const [selectedPattern, setSelectedPattern] = useState<PatternSelection>("auto");
     const [patternBrightness, setPatternBrightness] = useState<number>(0.3); // device-only dim
-    const [currentStrobeHz, setCurrentStrobeHz] = useState<number>(0);
+    const [currentStrobeHz, setCurrentStrobeHz] = useState<number>(20);
 
     // FFT bars for UI
     const [fftBars, setFftBars] = useState<Uint8Array | null>(null);
