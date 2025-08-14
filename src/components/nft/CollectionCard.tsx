@@ -5,7 +5,6 @@ import { ethers } from 'ethers';
 import type { Collection } from '@/types/nft';
 import { EyeIcon, HeartIcon, MusicalNoteIcon, UsersIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
-import Image from 'next/image';
 
 interface CollectionCardProps {
   collection: Collection;
@@ -52,10 +51,6 @@ export function CollectionCard({ collection }: CollectionCardProps) {
 
   const status = getCollectionStatus();
   
-  const imageSrc = imageError
-    ? '/images/sunrise_energizer.png'
-    : collection.imageUrl || '/images/sunrise_energizer.png';
-
   // Calculate progress percentage
   const progressPercentage = (collection.maxSupply && collection.maxSupply > 0) 
     ? ((collection.currentSupply || 0) / collection.maxSupply) * 100 
@@ -69,13 +64,13 @@ export function CollectionCard({ collection }: CollectionCardProps) {
     >
       {/* Image Section */}
       <div className="relative aspect-square">
-        <Image
-          src={imageSrc}
+        <img
+          src={collection.imageUrl || '/images/sunrise_energizer.png'}
           alt={collection.name}
-          fill
-          className="object-cover"
-          onError={() => {
-            if (!imageError) setImageError(true);
+          className="w-full h-full object-cover"
+          onError={(e) => {
+            const target = e.target as HTMLImageElement;
+            target.src = '/images/sunrise_energizer.png';
           }}
         />
         <div 

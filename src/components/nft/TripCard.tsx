@@ -6,7 +6,6 @@ import type { Trip } from '@/types/nft';
 import { EyeIcon, MusicalNoteIcon, UsersIcon } from '@heroicons/react/24/outline';
 import { PlayIcon } from '@heroicons/react/24/solid';
 import Link from 'next/link';
-import Image from 'next/image';
 
 interface TripCardProps {
     trip: Trip;
@@ -54,10 +53,6 @@ export function TripCard({ trip }: TripCardProps) {
 
     const status = getCollectionStatus();
 
-    const imageSrc = imageError
-        ? '/images/sunrise_energizer.png'
-        : trip.imageUrl || '/images/sunrise_energizer.png';
-
     // Calculate progress percentage
     const progressPercentage = (trip.maxSupply && trip.maxSupply > 0)
         ? ((trip.currentSupply || 0) / trip.maxSupply) * 100
@@ -65,19 +60,19 @@ export function TripCard({ trip }: TripCardProps) {
 
     return (
         <div
-            className="bg-white rounded-xl shadow-lg overflow-hidden  transition-all duration-300"
+            className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300"
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
         >
             {/* Image Section */}
             <div className="relative aspect-square">
-                <Image
-                    src={trip.imageUrl}
+                <img
+                    src={trip.imageUrl || '/images/sunrise_energizer.png'}
                     alt={trip.name}
-                    fill
-                    className="object-cover"
-                    onError={() => {
-                        if (!imageError) setImageError(true);
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.src = '/images/sunrise_energizer.png';
                     }}
                 />
                 <div
