@@ -35,13 +35,17 @@ export interface CollectionMetadata {
 }
 
 // Token/NFT Types
-export interface Token {
+export interface Trip extends Collection{
   id: string;
   tokenId: string;
   collectionAddress: string;
   owner: string;
   creator: string;
-  metadata: TokenMetadata;
+  description: string;
+  imageUrl: string;
+  name: string;
+  price: string;
+  royaltyPercentage: number;
   mintedAt: string;
   isListed?: boolean;
   listingPrice?: string;
@@ -68,7 +72,7 @@ export interface User {
   createdAt: string;
   isCreator: boolean;
   collections?: Collection[];
-  ownedTokens?: Token[];
+  ownedTokens?: Trip[];
 }
 
 export interface UserCredits {

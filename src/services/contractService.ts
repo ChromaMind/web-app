@@ -181,6 +181,38 @@ const TRIP_NFT_ABI = [
     ],
     "name": "ExperiencePaid",
     "type": "event"
+  },
+  {
+    "inputs": [],
+    "name": "getPublicMetadata",
+    "outputs": [
+      {
+        "internalType": "string",
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "owner",
+        "type": "address"
+      }
+    ],
+    "name": "getTokensByOwner",
+    "outputs": [
+      {
+        "internalType": "uint256[]",
+        "name": "",
+        "type": "uint256[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
   }
 ];
 
@@ -404,7 +436,6 @@ export class ContractService {
       const intensity = 'Medium';
       const duration = 'Unknown';
 
-      console.log('publicMetadata', publicMetadata);
       try {
         if (publicMetadata) {
           const parsedMetadata = JSON.parse(publicMetadata);
@@ -425,6 +456,10 @@ export class ContractService {
         maxSupply: Number(maxSupply),
         currentSupply: Number(totalSupply),
         price: ethers.formatEther(price),
+        audioCid: '',
+        patternCid: '',
+        metadataCid: '',
+        severity: 'low',
         createdAt: new Date().toISOString(),
         imageUrl: getPublicGatewayUrl(imageUrl),
         isActive: true,
@@ -505,74 +540,34 @@ export class ContractService {
    */
   async getTokensForCollection(collectionAddress: string) {
     try {
-      const collection = new ethers.Contract(
+      const collectionContract = new ethers.Contract(
         collectionAddress,
         TRIP_NFT_ABI,
         this.provider
       );
 
-      const [totalSupply, creator] = await Promise.all([
-        collection.totalSupply(),
-        collection.collectionCreator()
-      ]);
+      const collection = await this.getCollection(collectionAddress);
+
       const tokens: any[] = [];
 
       // Get all tokens in the collection
-      for (let i = 0; i < totalSupply; i++) {
+      for (let i = 1; i <= collection.currentSupply; i++) {
         try {
           const tokenId = i; // Since tokenByIndex doesn't exist, assume sequential token IDs
-          console.log('tokenId', tokenId);
-          const owner = await collection.ownerOf(tokenId);
           
           // Get the actual token URI from the contract
-          const tokenURI = await collection.tokenURI(tokenId);
+          const owner = await collectionContract.ownerOf(tokenId);
           
           // Fetch metadata from IPFS
           let metadata = {
-            name: `${await collection.name()} #${tokenId}`,
-            description: 'A unique audio-visual experience NFT',
-            image: '/images/default-token.jpg',
-            audio: '',
-            pattern: '',
-            attributes: []
+            ...collection,
+            owner: owner,
           };
+          const token = {...metadata, id: `${collectionAddress}-${tokenId}`,collectionAddress: collectionAddress, tokenId: tokenId.toString(),  mintedAt: new Date().toISOString(), isListed: false}
+          console.log('token', token);
 
-          try {
-            if (tokenURI && tokenURI !== '') {
-              // Convert IPFS URI to HTTP gateway URL
-              let metadataUrl = tokenURI;
-              if (tokenURI.startsWith('ipfs://')) {
-                const ipfsHash = tokenURI.replace('ipfs://', '');
-                metadataUrl = `https://gateway.pinata.cloud/ipfs/${ipfsHash}`;
-              }
-              
-              const response = await fetch(metadataUrl);
-              if (response.ok) {
-                const ipfsMetadata = await response.json();
-                metadata = {
-                  name: ipfsMetadata.name || metadata.name,
-                  description: ipfsMetadata.description || metadata.description,
-                  image: ipfsMetadata.image || metadata.image,
-                  audio: ipfsMetadata.audio || metadata.audio,
-                  pattern: ipfsMetadata.streaming_data || ipfsMetadata.pattern || metadata.pattern,
-                  attributes: ipfsMetadata.attributes || metadata.attributes
-                };
-              }
-            }
-          } catch (ipfsError) {
-            console.warn(`Failed to fetch IPFS metadata for token ${tokenId}:`, ipfsError);
-          }
           
-          tokens.push({
-            id: `${collectionAddress}-${tokenId}`,
-            tokenId: tokenId.toString(),
-            collectionAddress,
-            owner,
-            creator,
-            metadata,
-            mintedAt: new Date().toISOString(),
-            isListed: false
-          });
+          tokens.push(token);
         } catch (error) {
           console.warn(`Error getting token ${i}:`, error);
         }

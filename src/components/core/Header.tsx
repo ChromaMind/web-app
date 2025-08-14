@@ -19,13 +19,16 @@ export function Header() {
             </Link>
           </div>
 
-          {/* Desktop Navigation - Unchanged */}
+          {/* Desktop Navigation */}
           <nav className="hidden md:flex md:items-center md:gap-8">
             <Link href="/trips" className="text-sm font-medium text-slate-600 hover:text-slate-900">
-              My Trips
-            </Link>
-            <Link href="/nfts" className="text-sm font-medium text-slate-600 hover:text-slate-900">
               Trips
+            </Link>
+            <Link href="/collections" className="text-sm font-medium text-slate-600 hover:text-slate-900">
+              Collections
+            </Link>
+            <Link href="/trips/mine" className="text-sm font-medium text-slate-600 hover:text-slate-900">
+              My Trips
             </Link>
             <Link href="/creator" className="text-sm font-medium text-slate-600 hover:text-slate-900">
               Creator

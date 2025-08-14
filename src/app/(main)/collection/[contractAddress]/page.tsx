@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { useAccount } from 'wagmi';
 import { ethers } from 'ethers';
+import { useContractService } from '@/hooks/useContractService';
 import { 
   MusicalNoteIcon, 
   UserIcon, 
@@ -14,13 +15,13 @@ import {
   ShareIcon
 } from '@heroicons/react/24/outline';
 
-import { useContractService } from '@/hooks/useContractService';
+import { createContractService, DEFAULT_CONTRACT_CONFIG } from '@/services/contractService';
 import type { Collection, Token } from '@/types/nft';
 
 export default function CollectionPage() {
   const params = useParams();
   const { address, isConnected } = useAccount();
-  const { getCollection, getTokensForCollection, mintNFT } = useContractService();
+  const contractService = useContractService();
   
   const [collection, setCollection] = useState<Collection | null>(null);
   const [tokens, setTokens] = useState<Token[]>([]);
@@ -33,6 +34,19 @@ export default function CollectionPage() {
 
   const contractAddress = params.contractAddress as string;
 
+  // Helper functions
+  const formatAddress = (address: string) => {
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  };
+
+  const formatPrice = (price: string) => {
+    return parseFloat(price).toFixed(4);
+  };
+
+  const userOwnedTokens = tokens.filter(token => 
+    token.owner.toLowerCase() === address?.toLowerCase()
+  );
+
   useEffect(() => {
     if (contractAddress) {
       loadCollectionData();
@@ -43,12 +57,16 @@ export default function CollectionPage() {
     try {
       setIsLoading(true);
       
+      // Create a provider for read-only operations
+      const provider = new ethers.JsonRpcProvider(DEFAULT_CONTRACT_CONFIG.rpcUrl);
+      const contractService = createContractService(DEFAULT_CONTRACT_CONFIG, provider as any);
+      
       // Load collection details
-      const collectionData = await getCollection(contractAddress);
+      const collectionData = await contractService.getCollection(contractAddress);
       setCollection(collectionData);
       
       // Load tokens for this collection
-      const tokensData = await getTokensForCollection(contractAddress);
+      const tokensData = await contractService.getTokensForCollection(contractAddress);
       setTokens(tokensData);
     } catch (error) {
       console.error('Error loading collection data:', error);
@@ -58,19 +76,20 @@ export default function CollectionPage() {
   };
 
   const handleMint = async () => {
-    if (!collection || !isConnected) return;
+    if (!collection || !isConnected || !contractService) return;
     
     try {
       setIsMinting(true);
       setMintError(null);
       
-      const price = ethers.parseEther(collection.price);
-      const totalPrice = price * BigInt(mintAmount);
+      const totalPrice = ethers.parseEther(collection.price) * BigInt(mintAmount);
+      const txHash = await contractService.mintNFT(contractAddress, mintAmount, totalPrice);
       
-      await mintNFT(contractAddress, mintAmount, totalPrice);
-      
-      // Reload data after minting
+      console.log('Minting transaction hash:', txHash);
+      // Optionally, you can add logic here to wait for the transaction to be mined
+      // and then reload the collection data.
       await loadCollectionData();
+      
     } catch (error) {
       console.error('Minting error:', error);
       setMintError(error instanceof Error ? error.message : 'Minting failed');
@@ -111,14 +130,6 @@ export default function CollectionPage() {
     } catch (error) {
       console.error('Error playing audio:', error);
     }
-  };
-
-  const formatAddress = (address: string) => {
-    return `${address.slice(0, 6)}...${address.slice(-4)}`;
-  };
-
-  const formatPrice = (price: string) => {
-    return parseFloat(price).toFixed(4);
   };
 
   if (isLoading) {
@@ -162,10 +173,6 @@ export default function CollectionPage() {
 
   const isCreator = isConnected && address && 
     collection.creator.toLowerCase() === address.toLowerCase();
-
-  const userOwnedTokens = tokens.filter(token => 
-    token.owner.toLowerCase() === address?.toLowerCase()
-  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
@@ -306,7 +313,10 @@ export default function CollectionPage() {
               
               {!isConnected ? (
                 <div className="text-center py-4">
-                  <p className="text-slate-600 mb-4">Connect your wallet to mint</p>
+                  <div className="text-slate-400 mb-3">
+                    <UserIcon className="mx-auto h-8 w-8" />
+                  </div>
+                  <p className="text-slate-600 mb-4">Connect your wallet to mint NFTs from this collection</p>
                   <button className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors">
                     Connect Wallet
                   </button>

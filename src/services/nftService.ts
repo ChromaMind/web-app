@@ -127,6 +127,7 @@ export async function getTrips(): Promise<Token[]> {
     for (const collection of collections) {
       try {
         const tokens = await contractService.getTokensForCollection(collection.contractAddress);
+        console.log('tokens', tokens);
         allTrips.push(...tokens);
       } catch (error) {
         console.error(`Error fetching tokens for collection ${collection.contractAddress}:`, error);
