@@ -28,8 +28,8 @@ export default function CollectionItemPage() {
         if (data) {
           setTrip(data);
           
-          // Auto-load the session into the player
-          if (data.audioUrl) {
+          // Only load the session if it's different from the current one
+          if (data.audioUrl && (!currentSession || currentSession.id !== data.id)) {
             loadTrip(data);
           }
         } else {
@@ -44,7 +44,7 @@ export default function CollectionItemPage() {
     };
 
     fetchTripData();
-  }, [contractAddress, id, loadTrip]);
+  }, [contractAddress, id, currentSession?.id]); // Remove loadTrip, add currentSession?.id
 
   const handlePlayPause = () => {
     if (isPlaying) {

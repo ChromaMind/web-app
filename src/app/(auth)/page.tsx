@@ -11,7 +11,7 @@ export default function Home() {
   // Redirect to dashboard if the user is already connected
   useEffect(() => {
     if (isConnected) {
-      router.push('/trips');
+      router.push('/collections');
     }
   }, [isConnected, router]);
 

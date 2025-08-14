@@ -75,7 +75,7 @@ export function PersistentPlayer() {
           {/* Session Info - Clickable to navigate to player page */}
           <div 
             className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer hover:bg-slate-50 rounded-lg p-2 transition-colors"
-            onClick={() => router.push(`/trips/${currentSession.id}`)}
+            onClick={() => router.push(`/collection/${currentSession.collectionAddress}/${currentSession.tokenId}`)}
             title="Click to view session details"
           >
             <div className="w-12 h-12 bg-slate-200 rounded-lg overflow-hidden flex-shrink-0">

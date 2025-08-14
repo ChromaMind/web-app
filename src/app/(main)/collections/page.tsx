@@ -31,20 +31,8 @@ export default function CollectionsPage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <div className="bg-white border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 py-6">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900">Collections</h1>
-            <p className="text-slate-600 mt-2">
-              Browse NFT collections of audio-visual trips
-            </p>
-          </div>
-        </div>
-      </div>
-
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto p-6">
+      <div className="max-w-7xl mx-auto p-6 pt-8">
         {collections.length === 0 ? (
           <div className="text-center py-12">
             <div className="text-slate-400 mb-4">

@@ -74,12 +74,27 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const loadTrip = useCallback((session: Trip) => {
     if (audioRef.current) {
-      audioRef.current.src = session.audioUrl;
-      audioRef.current.load();
-      setCurrentSession(session);
-      setIsReady(false); // Will be set to true when metadata loads
+      // Check if we're loading the same trip
+      const isSameTrip = currentSession?.id === session.id;
+      const wasPlaying = isPlaying;
+      const previousTime = currentTime;
+      
+      // Only reset if it's a different trip
+      if (!isSameTrip) {
+        audioRef.current.src = session.audioUrl;
+        audioRef.current.load();
+        setCurrentSession(session);
+        setIsReady(false); // Will be set to true when metadata loads
+      } else {
+        // Same trip - preserve playback state
+        setCurrentSession(session);
+        // If it was playing, resume playback
+        if (wasPlaying && audioRef.current.paused) {
+          audioRef.current.play().catch(console.error);
+        }
+      }
     }
-  }, []);
+  }, [currentSession?.id, isPlaying, currentTime]);
 
   const play = useCallback(async () => {
     if (audioRef.current && isReady) {

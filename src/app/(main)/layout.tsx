@@ -36,6 +36,8 @@ export default function MainLayout({ children }: { children: ReactNode }) {
       router.replace('/');
     } else {
       setIsVerified(true);
+      // Redirect to collections as the main page after login
+      router.replace('/collections');
     }
   }, [isConnected, isConnecting, router]);
 
