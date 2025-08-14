@@ -24,6 +24,9 @@ export function Header() {
             <Link href="/trips" className="text-sm font-medium text-slate-600 hover:text-slate-900">
               My Trips
             </Link>
+            <Link href="/creator" className="text-sm font-medium text-slate-600 hover:text-slate-900">
+              Creator
+            </Link>
             <Link href="/settings" className="text-sm font-medium text-slate-600 hover:text-slate-900">
               Settings
             </Link>
