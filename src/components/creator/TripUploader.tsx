@@ -2,8 +2,10 @@
 
 import { useState, useCallback } from 'react';
 import { useAccount } from 'wagmi';
-import { CloudArrowUpIcon, DocumentTextIcon, MusicalNoteIcon, RocketLaunchIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline';
+import { ethers } from 'ethers';
+import { CloudArrowUpIcon, DocumentTextIcon, MusicalNoteIcon, RocketLaunchIcon, ClipboardDocumentIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
 import { uploadToIPFS, uploadJSONToIPFS, testPinataConnection, type IPFSUploadResult } from '@/services/ipfsService';
+import { createContractService, DEFAULT_CONTRACT_CONFIG } from '@/services/contractService';
 
 interface NFTMetadata {
   name: string;
@@ -49,9 +51,12 @@ export function TripUploader() {
   const [deployedMetadata, setDeployedMetadata] = useState<NFTMetadata | null>(null);
   const [deployedTokenId, setDeployedTokenId] = useState<number | null>(null);
 
-  // Contract deployment state (simplified for demo)
+  // Contract deployment state
   const [isDeploying, setIsDeploying] = useState(false);
   const [isDeployed, setIsDeployed] = useState(false);
+  const [deployedContractAddress, setDeployedContractAddress] = useState<string>('');
+  const [deploymentError, setDeploymentError] = useState<string>('');
+  const [deploymentTxHash, setDeploymentTxHash] = useState<string>('');
 
   // File upload handlers
   const handleAudioUpload = useCallback((file: File | null) => {
@@ -97,6 +102,68 @@ export function TripUploader() {
     }
   }, []);
 
+  // Deploy to blockchain using TripFactory
+  const deployToBlockchain = useCallback(async () => {
+    if (!address || !uploadedFiles.metadata) {
+      alert('Please connect wallet and upload files first');
+      return;
+    }
+
+    setIsDeploying(true);
+    setDeploymentError('');
+
+    try {
+      // Get the signer from the connected wallet
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+
+      // Create contract service
+      const contractService = createContractService(DEFAULT_CONTRACT_CONFIG, signer);
+
+      // Prepare collection data
+      const collectionData = {
+        name: formData.name,
+        symbol: 'TRIP',
+        maxSupply: formData.maxSupply,
+        price: ethers.parseEther(formData.mintPrice),
+        royaltyPercentage: 1000, // 10% royalty
+      };
+
+      console.log('Deploying collection with data:', collectionData);
+
+      // Deploy the collection
+      const txHash = await contractService.createTripCollection(collectionData);
+      setDeploymentTxHash(txHash);
+
+      console.log('Collection deployment transaction:', txHash);
+
+      // Wait for transaction confirmation
+      const receipt = await contractService.provider.waitForTransaction(txHash);
+      console.log('Transaction confirmed:', receipt);
+
+      // Get the deployed collection address from the event
+      const deployedAddress = await contractService.getDeployedCollections();
+      const newCollectionAddress = deployedAddress[deployedAddress.length - 1]; // Latest deployed
+
+      setDeployedContractAddress(newCollectionAddress);
+      setIsDeployed(true);
+
+      console.log('Collection deployed at:', newCollectionAddress);
+
+      // Set the base URI for the collection
+      const baseURI = `ipfs://${uploadedFiles.metadata.hash.replace('/metadata.json', '')}/`;
+      await contractService.setBaseURI(newCollectionAddress, baseURI);
+
+      console.log('Base URI set to:', baseURI);
+
+    } catch (error) {
+      console.error('Deployment failed:', error);
+      setDeploymentError(error instanceof Error ? error.message : 'Deployment failed');
+    } finally {
+      setIsDeploying(false);
+    }
+  }, [address, uploadedFiles.metadata, formData]);
+
   // Test Pinata connection
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -123,6 +190,20 @@ export function TripUploader() {
   const handleDeploy = useCallback(async () => {
     if (!address || !formData.audioFile || !formData.patternFile) {
       alert('Please fill all required fields and upload files');
+      return;
+    }
+
+    // Check if user is on Sepolia network
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const network = await provider.getNetwork();
+      if (network.chainId !== BigInt(11155111)) { // Sepolia chain ID
+        alert('Please switch to Sepolia testnet to deploy your Trip NFT');
+        return;
+      }
+    } catch (error) {
+      console.error('Failed to check network:', error);
+      alert('Please ensure you are connected to Sepolia testnet');
       return;
     }
 
@@ -166,16 +247,64 @@ export function TripUploader() {
       setUploadProgress(80);
       setDeployedMetadata(metadata);
 
-      // Step 4: Simulate smart contract deployment
+      // Step 4: Deploy to blockchain using TripFactory
       setUploadProgress(90);
       setIsDeploying(true);
       
-      // Simulate contract deployment delay
-      setTimeout(() => {
-        setIsDeploying(false);
+      try {
+        // Get the signer from the connected wallet
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const signer = await provider.getSigner();
+
+        // Create contract service
+        const contractService = createContractService(DEFAULT_CONTRACT_CONFIG, signer);
+
+        // Prepare collection data
+        const priceInWei = ethers.parseEther(formData.mintPrice.toString());
+        const collectionData = {
+          name: formData.name,
+          symbol: 'TRIP',
+          maxSupply: formData.maxSupply,
+          price: priceInWei,
+          royaltyPercentage: 1000, // 10% royalty
+        };
+
+        console.log('Deploying collection with data:', collectionData);
+        console.log('Price in wei:', priceInWei.toString());
+        console.log('Price type:', typeof priceInWei);
+
+        // Deploy the collection
+        const txHash = await contractService.createTripCollection(collectionData);
+        setDeploymentTxHash(txHash);
+
+        console.log('Collection deployment transaction:', txHash);
+
+        // Wait for transaction confirmation
+        const receipt = await contractService.provider.waitForTransaction(txHash);
+        console.log('Transaction confirmed:', receipt);
+
+        // Get the deployed collection address from the event
+        const deployedAddress = await contractService.getDeployedCollections();
+        const newCollectionAddress = deployedAddress[deployedAddress.length - 1]; // Latest deployed
+
+        setDeployedContractAddress(newCollectionAddress);
         setIsDeployed(true);
+
+        console.log('Collection deployed at:', newCollectionAddress);
+
+        // Set the base URI for the collection
+        const baseURI = `ipfs://${metadataResult.hash.replace('/metadata.json', '')}/`;
+        await contractService.setBaseURI(newCollectionAddress, baseURI);
+
+        console.log('Base URI set to:', baseURI);
         setUploadProgress(100);
-      }, 3000);
+
+      } catch (error) {
+        console.error('Blockchain deployment failed:', error);
+        setDeploymentError(error instanceof Error ? error.message : 'Blockchain deployment failed');
+        setIsDeploying(false);
+        return;
+      }
     } catch (error) {
       console.error('Deployment failed:', error);
       alert(`Deployment failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -415,7 +544,9 @@ export function TripUploader() {
       {/* Deployment Status */}
       {deployedMetadata && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-green-900 mb-4">🎉 NFT Deployed Successfully!</h3>
+          <h3 className="text-lg font-semibold text-green-900 mb-4">
+            {isDeployed ? '🎉 Trip NFT Deployed Successfully!' : '📁 Files Uploaded to IPFS'}
+          </h3>
           
           <div className="space-y-3">
             <div className="flex justify-between">
@@ -513,11 +644,58 @@ export function TripUploader() {
             </p>
           </div>
 
+          {/* Blockchain Deployment Info */}
+          {isDeployed && deployedContractAddress && (
+            <div className="mt-4 p-3 bg-blue-100 rounded-lg">
+              <h4 className="font-semibold text-blue-900 mb-2">🔗 Blockchain Deployment</h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-blue-700">Contract Address:</span>
+                  <span className="font-mono text-xs text-blue-600">
+                    {deployedContractAddress}
+                  </span>
+                </div>
+                {deploymentTxHash && (
+                  <div className="flex justify-between">
+                    <span className="text-blue-700">Transaction Hash:</span>
+                    <a 
+                      href={`https://sepolia.etherscan.io/tx/${deploymentTxHash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:underline font-mono text-xs"
+                    >
+                      {deploymentTxHash.substring(0, 12)}...
+                    </a>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Next Steps */}
           <div className="mt-4 p-3 bg-green-100 rounded-lg">
             <p className="text-sm text-green-800">
-              <strong>Next Steps:</strong> Your NFT is now live on IPFS! Deploy your smart contract with the metadata URI above.
+              {isDeployed ? (
+                <><strong>Success!</strong> Your Trip NFT is now deployed on the blockchain and ready for minting!</>
+              ) : (
+                <><strong>Next Steps:</strong> Your NFT is now live on IPFS! Deploy your smart contract with the metadata URI above.</>
+              )}
             </p>
           </div>
+        </div>
+      )}
+
+      {/* Error Display */}
+      {deploymentError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <h3 className="text-lg font-semibold text-red-900 mb-2">❌ Deployment Failed</h3>
+          <p className="text-red-800 text-sm">{deploymentError}</p>
+          <button
+            onClick={() => setDeploymentError('')}
+            className="mt-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+          >
+            Dismiss
+          </button>
         </div>
       )}
 

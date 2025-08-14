@@ -99,6 +99,10 @@ export class ContractService {
    */
   async createTripCollection(request: CreateCollectionRequest): Promise<string> {
     try {
+      console.log('ContractService.createTripCollection called with:', request);
+      console.log('Price type:', typeof request.price);
+      console.log('Price value:', request.price.toString());
+      
       const factory = new ethers.Contract(
         this.config.tripFactoryAddress,
         TRIP_FACTORY_ABI,
@@ -109,7 +113,7 @@ export class ContractService {
         request.name,
         request.symbol,
         request.maxSupply,
-        ethers.parseEther(request.price),
+        request.price, // Already parsed to BigInt
         request.royaltyPercentage // This will be converted to uint96 by ethers
       );
 
@@ -227,6 +231,123 @@ export class ContractService {
     } catch (error) {
       console.error('Error getting collection info:', error);
       throw new Error(`Failed to get collection info: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Get full collection details including metadata
+   */
+  async getCollection(collectionAddress: string) {
+    try {
+      const collection = new ethers.Contract(
+        collectionAddress,
+        TRIP_NFT_ABI,
+        this.provider
+      );
+
+      const [totalSupply, maxSupply, price, name, symbol] = await Promise.all([
+        collection.totalSupply(),
+        collection.MAX_SUPPLY(),
+        collection.mintPrice(),
+        collection.name(),
+        collection.symbol()
+      ]);
+
+      // For now, return a mock collection object since we don't have IPFS metadata
+      // In a real implementation, you'd fetch this from IPFS using the baseURI
+      return {
+        id: collectionAddress,
+        contractAddress: collectionAddress,
+        name: name,
+        symbol: symbol,
+        description: 'A unique audio-visual experience collection',
+        creator: await collection.owner(),
+        maxSupply: Number(maxSupply),
+        currentSupply: Number(totalSupply),
+        price: ethers.formatEther(price),
+        audioCid: '', // Would come from IPFS metadata
+        patternCid: '', // Would come from IPFS metadata
+        metadataCid: '', // Would come from IPFS metadata
+        createdAt: new Date().toISOString(),
+        imageUrl: '/images/sunrise_energizer.png',
+        isActive: true,
+        royaltyPercentage: 1000, // 10% default
+        tags: [],
+        category: 'Audio-Visual'
+      };
+    } catch (error) {
+      console.error('Error getting collection:', error);
+      throw new Error(`Failed to get collection: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Get tokens for a specific collection
+   */
+  async getTokensForCollection(collectionAddress: string) {
+    try {
+      const collection = new ethers.Contract(
+        collectionAddress,
+        TRIP_NFT_ABI,
+        this.provider
+      );
+
+      const totalSupply = await collection.totalSupply();
+      const tokens: any[] = [];
+
+      // Get all tokens in the collection
+      for (let i = 0; i < totalSupply; i++) {
+        try {
+          const tokenId = await collection.tokenByIndex(i);
+          const owner = await collection.ownerOf(tokenId);
+          
+          tokens.push({
+            id: `${collectionAddress}-${tokenId}`,
+            tokenId: tokenId.toString(),
+            collectionAddress,
+            owner,
+            creator: await collection.owner(),
+            metadata: {
+              name: `${await collection.name()} #${tokenId}`,
+              description: 'A unique audio-visual experience NFT',
+              image: '/images/default-token.jpg',
+              audio: '', // Would come from IPFS metadata
+              pattern: '', // Would come from IPFS metadata
+              attributes: []
+            },
+            mintedAt: new Date().toISOString(),
+            isListed: false
+          });
+        } catch (error) {
+          console.warn(`Error getting token ${i}:`, error);
+        }
+      }
+
+      return tokens;
+    } catch (error) {
+      console.error('Error getting tokens for collection:', error);
+      throw new Error(`Failed to get tokens for collection: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Mint NFTs from a collection
+   */
+  async mintNFT(collectionAddress: string, quantity: number, totalPrice: bigint): Promise<string> {
+    try {
+      const collection = new ethers.Contract(
+        collectionAddress,
+        TRIP_NFT_ABI,
+        this.signer
+      );
+
+      const tx = await collection.mint(quantity, { value: totalPrice });
+      const receipt = await tx.wait();
+      
+      return receipt.hash;
+    } catch (error) {
+      console.error('Error minting NFT:', error);
+      throw new Error(`Failed to mint NFT: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -455,7 +576,7 @@ export class ContractService {
         request.name,
         request.symbol,
         request.maxSupply,
-        ethers.parseEther(request.price),
+        request.price, // Already BigInt
         request.royaltyPercentage // This will be converted to uint96
       );
 
@@ -477,7 +598,7 @@ export class ContractService {
         this.signer
       );
 
-      const price = await collection.price();
+      const price = await collection.mintPrice(); // Use mintPrice() instead of price()
       const totalCost = price * BigInt(request.quantity);
 
       const gasEstimate = await collection.mint.estimateGas(
@@ -498,10 +619,10 @@ export function createContractService(config: ContractConfig, signer: ethers.Sig
   return new ContractService(config, signer);
 }
 
-// Default configuration for local Anvil network
+// Default configuration for Sepolia testnet
 export const DEFAULT_CONTRACT_CONFIG: ContractConfig = {
-  tripFactoryAddress: '0x0DCd1Bf9A1b36cE34237eEaFef220932846BCD82',
-  streamingLedgerAddress: '0x9A676e781A523b5d0C0e43731313A708CB607508',
-  chainId: 31337, // Local Anvil network
-  rpcUrl: 'http://127.0.0.1:8545'
+  tripFactoryAddress: '0x04b307e55A67b7a2704667BAf64091AB54ee5B82',
+  streamingLedgerAddress: '0x056D004a46972F106fa420309C1ea91f44406272',
+  chainId: 11155111, // Sepolia testnet
+  rpcUrl: 'https://lb.drpc.org/sepolia/AplHGB2v9khYpYVNxc5za0FG8GqzeK8R8IrYIgaNGuYu'
 };

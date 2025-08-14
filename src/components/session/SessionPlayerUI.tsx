@@ -204,7 +204,7 @@ export function SessionPlayerUI({ session }: Props) {
           currentPatternRef.current = patternId;
           setPatternLabel("AUTO");
         }
-      } else {
+    } else {
         patternId = modeNow;
         if (currentPatternRef.current !== patternId) {
           currentPatternRef.current = patternId;
@@ -323,7 +323,7 @@ export function SessionPlayerUI({ session }: Props) {
             <p className="text-gray-600">
               LED Music Visualizer — <span className="font-mono text-xs">{patternLabel}</span>
             </p>
-          </div>
+      </div>
 
           {/* Play + Seek */}
           <div className="flex items-center gap-3">
@@ -363,8 +363,8 @@ export function SessionPlayerUI({ session }: Props) {
                 />
               </div>
             </div>
-          </div>
-
+        </div>
+        
           {/* Pattern selector + Brightness */}
           <div className="flex items-center gap-3">
             <label className="text-sm text-slate-600">Pattern</label>
@@ -395,7 +395,7 @@ export function SessionPlayerUI({ session }: Props) {
                   className="w-full"
               />
             </div>
-          </div>
+        </div>
 
           {/* STROBE controls */}
           <div className="rounded-lg border p-3 space-y-2">
@@ -455,7 +455,7 @@ export function SessionPlayerUI({ session }: Props) {
             />
             Keep screen awake
           </label>
-        </div>
       </div>
+    </div>
   );
 }

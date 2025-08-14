@@ -51,22 +51,22 @@ export interface NFTConfig {
   };
 }
 
-// Development Configuration (Local Anvil Network)
+// Development Configuration (Sepolia Testnet)
 export const DEV_CONFIG: NFTConfig = {
   network: {
-    chainId: 31337,
-    name: 'Local Anvil Network',
-    rpcUrl: 'http://127.0.0.1:8545',
-    explorerUrl: 'http://127.0.0.1:8545',
-    nativeCurrency: {
-      name: 'Ether',
-      symbol: 'ETH',
-      decimals: 18,
-    },
+    chainId: 11155111,
+    name: 'Sepolia Testnet',
+    rpcUrl: 'https://lb.drpc.org/sepolia/AplHGB2v9khYpYVNxc5za0FG8GqzeK8R8IrYIgaNGuYu',
+    explorerUrl: 'https://sepolia.etherscan.io',
+      nativeCurrency: {
+    name: 'Sepolia Ether',
+    symbol: 'ETH',
+    decimals: 18,
+  },
   },
   contracts: {
-    tripFactory: process.env.NEXT_PUBLIC_TRIP_FACTORY_ADDRESS || '0x0DCd1Bf9A1b36cE34237eEaFef220932846BCD82',
-    streamingLedger: process.env.NEXT_PUBLIC_STREAMING_LEDGER_ADDRESS || '0x9A676e781A523b5d0C0e43731313A708CB607508',
+    tripFactory: process.env.NEXT_PUBLIC_TRIP_FACTORY_ADDRESS || '0x04b307e55A67b7a2704667BAf64091AB54ee5B82',
+    streamingLedger: process.env.NEXT_PUBLIC_STREAMING_LEDGER_ADDRESS || '0x056D004a46972F106fa420309C1ea91f44406272',
     weth: process.env.NEXT_PUBLIC_WETH_ADDRESS || '0x0000000000000000000000000000000000000000',
   },
   ipfs: {
@@ -173,6 +173,12 @@ export const NETWORKS = {
     rpcUrl: 'https://rpc-mumbai.maticvigil.com',
     explorerUrl: 'https://mumbai.polygonscan.com',
     nativeCurrency: { name: 'MATIC', symbol: 'MATIC', decimals: 18 },
+  },
+  11155111: {
+    name: 'Sepolia Testnet',
+    rpcUrl: 'https://lb.drpc.org/sepolia/AplHGB2v9khYpYVNxc5za0FG8GqzeK8R8IrYIgaNGuYu',
+    explorerUrl: 'https://sepolia.etherscan.io',
+    nativeCurrency: { name: 'Sepolia Ether', symbol: 'ETH', decimals: 18 },
   },
   31337: {
     name: 'Local Anvil Network',

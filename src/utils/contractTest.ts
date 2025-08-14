@@ -2,10 +2,10 @@
 import { ethers } from 'ethers';
 import { createContractService, DEFAULT_CONTRACT_CONFIG } from '@/services/contractService';
 
-// Test configuration for local Anvil network
+// Test configuration for Sepolia testnet
 const TEST_CONFIG = {
   ...DEFAULT_CONTRACT_CONFIG,
-  // Use the first Anvil account as signer
+  // Use a test wallet private key (replace with your actual test wallet)
   privateKey: '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
 };
 

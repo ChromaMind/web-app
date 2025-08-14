@@ -196,10 +196,10 @@ export interface CreateCollectionRequest {
   name: string;
   symbol: string;
   maxSupply: number;
-  price: string;
-  audioCid: string;
-  patternCid: string;
-  metadataCid: string;
+  price: bigint; // BigInt for wei amount
+  audioCid?: string;
+  patternCid?: string;
+  metadataCid?: string;
   royaltyPercentage: number; // In basis points (1000 = 10%)
 }
 
