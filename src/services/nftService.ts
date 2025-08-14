@@ -32,54 +32,43 @@ export interface SessionDetails extends Session {
 
 // --- MOCK DATA (Fallback) ---
 const MOCK_SESSION_DETAILS: { [id: string]: SessionDetails } = {
-  'nft-001': {
-    id: 'nft-001',
-    name: 'Oceanic Calm',
-    description: 'Gentle blue and green lights synced with calming ocean waves.',
-    imageUrl: '/images/oceanic_calm.png',
-    duration: 15,
-    creator: 'ChromaMind Labs',
-    category: 'Relaxation',
-    intensity: 'Mild',
-    audioUrl: '/audios/rave.mp3',
-    events: [ /* ... event data from previous step ... */ ],
-    comments: [
-      { author: 'ZenMaster', avatarUrl: '/avatars/avatar1.png', text: 'Pure bliss. I felt like I was floating in the ocean. Highly recommended for de-stressing after a long day.' },
-      { author: 'LucidDreamer', avatarUrl: '/avatars/avatar2.png', text: 'The color transitions are so smooth. Put me in a perfect state for meditation.' },
-    ],
-  },
-  'nft-002': {
-    id: 'nft-002',
-    name: 'Forest Focus',
-    description: 'Pulsating green and amber lights designed to enhance focus.',
-    imageUrl: '/images/forest_focus.png',
-    duration: 20,
-    creator: 'Dr. Aura Bright',
-    category: 'Focus',
-    intensity: 'Moderate',
-    audioUrl: '/audios/rave.mp3',
-    events: [ /* ... event data from previous step ... */ ],
-    comments: [
-      { author: 'DeepWork', avatarUrl: '/avatars/avatar3.png', text: 'My go-to for deep work sessions. The amber light pulses really help me lock in and ignore distractions. A game-changer.' },
-    ],
-  },
-  'nft-003': {
-    id: 'nft-003',
-    name: 'Sunrise Energizer',
-    description: 'A vibrant sequence of reds and oranges to start your day.',
-    imageUrl: '/images/sunrise_energizer.png',
-    duration: 10,
-    creator: 'ChromaMind Labs',
-    category: 'Energy',
-    intensity: 'Intense',
-    audioUrl: '/audios/rave.mp3',
-    events: [ /* ... event data from previous step ... */ ],
-    comments: [
-      { author: 'MorningGlow', avatarUrl: '/avatars/avatar4.png', text: 'Better than a cup of coffee! The vibrant reds and oranges really wake up my mind. I feel ready to take on the day.' },
-      { author: 'Apollo', avatarUrl: '/avatars/avatar1.png', text: 'The intensity is no joke. A powerful and quick way to get energized.' },
-    ],
-  },
+    'nft-001': {
+        id: 'nft-001',
+        name: 'Rave',
+        description:
+            'High-energy, club-style stims. ',
+        imageUrl: '/images/oceanic_calm.png',
+        duration: 10,
+        creator: 'ChromaMind Labs',
+        category: 'Relaxation',
+        intensity: 'Mild',
+        audioUrl: '/audios/rave.mp3',
+        events: [ /* ... event data from previous step ... */ ],
+        comments: [
+            { author: 'ZenMaster', avatarUrl: '/avatars/avatar1.png', text: 'Pure bliss. I felt like I was floating in the ocean. Highly recommended for de-stressing after a long day.' },
+            { author: 'LucidDreamer', avatarUrl: '/avatars/avatar2.png', text: 'The color transitions are so smooth. Put me in a perfect state for meditation.' },
+        ],
+    },
+    'nft-002': {
+        id: 'nft-002',
+        name: 'NSDR',
+        description:
+            'Non-Sleep Deep Relaxation: a guided, eyes-closed (or soft gaze) reset.',
+        imageUrl: '/images/forest_focus.png',
+        duration: 11,
+        creator: 'ChromaMind Labs',
+        category: 'Focus',
+        intensity: 'Moderate',
+        audioUrl: '/audios/nsdr.mp3',
+        events: [ /* ... event data from previous step ... */ ],
+        comments: [
+            { author: 'DeepWork', avatarUrl: '/avatars/avatar3.png', text: 'My go-to for deep work sessions. The amber light pulses really help me lock in and ignore distractions. A game-changer.' },
+        ],
+    },
 };
+
+
+
 
 // --- SERVICE FUNCTIONS ---
 

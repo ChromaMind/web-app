@@ -23,7 +23,7 @@ export function PatternGenerator() {
   const [multiPatterns, setMultiPatterns] = useState<PatternConfig[]>([
     { patternId: 'shift', startTime: 0, endTime: 15, brightness: 0.8, strobeHz: 0 },
     { patternId: 'sparkle', startTime: 15, endTime: 30, brightness: 0.9, strobeHz: 5 },
-    { patternId: 'expand', startTime: 30, endTime: 45, brightness: 0.7, strobeHz: 0 },
+    { patternId: 'inward', startTime: 30, endTime: 45, brightness: 0.7, strobeHz: 0 },
   ]);
 
   const [generatedData, setGeneratedData] = useState<any>(null);
