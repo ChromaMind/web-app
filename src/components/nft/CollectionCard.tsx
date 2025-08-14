@@ -5,6 +5,7 @@ import { ethers } from 'ethers';
 import type { Collection } from '@/types/nft';
 import { EyeIcon, HeartIcon, MusicalNoteIcon, UsersIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
+import Image from 'next/image';
 
 interface CollectionCardProps {
   collection: Collection;
@@ -14,6 +15,8 @@ export function CollectionCard({ collection }: CollectionCardProps) {
   const { address, isConnected } = useAccount();
   const [isHovered, setIsHovered] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
+  const [imageError, setImageError] = useState(false);
+  console.log('collection image', collection.imageUrl);
   
   // Safety check - ensure collection has required properties
   if (!collection || !collection.name || !collection.contractAddress) {
@@ -49,6 +52,10 @@ export function CollectionCard({ collection }: CollectionCardProps) {
 
   const status = getCollectionStatus();
   
+  const imageSrc = imageError
+    ? '/images/sunrise_energizer.png'
+    : collection.imageUrl || '/images/sunrise_energizer.png';
+
   // Calculate progress percentage
   const progressPercentage = (collection.maxSupply && collection.maxSupply > 0) 
     ? ((collection.currentSupply || 0) / collection.maxSupply) * 100 
@@ -61,22 +68,26 @@ export function CollectionCard({ collection }: CollectionCardProps) {
       onMouseLeave={() => setIsHovered(false)}
     >
       {/* Image Section */}
-      <div className="relative aspect-square bg-gradient-to-br from-purple-100 to-blue-100">
-        <img
-          src={collection.imageUrl || '/images/sunrise_energizer.png'}
+      <div className="relative aspect-square">
+        <Image
+          src={imageSrc}
           alt={collection.name}
-          className="w-full h-full object-cover"
-          onError={(e) => {
-            const target = e.target as HTMLImageElement;
-            target.src = '/images/sunrise_energizer.png';
+          fill
+          className="object-cover"
+          onError={() => {
+            if (!imageError) setImageError(true);
           }}
+        />
+        <div 
+          className="absolute inset-0 bg-gradient-to-br from-purple-100 to-blue-100"
+          style={{ zIndex: -1 }}
         />
         
         {/* Overlay with collection info */}
-        <div className={`absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-30 transition-all duration-300 ${
-          isHovered ? 'bg-opacity-30' : ''
+        <div className={`absolute inset-0 transition-all duration-300 ${
+          isHovered ? 'bg-black bg-opacity-30' : 'bg-opacity-0'
         }`}>
-          <div className="absolute bottom-4 left-4 right-4 text-white">
+          <div className={`absolute bottom-4 left-4 right-4 text-white transition-opacity duration-300 ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <MusicalNoteIcon className="w-5 h-5" />

@@ -1,4 +1,5 @@
 import { ethers } from 'ethers';
+import { getPublicGatewayUrl } from '@/services/ipfsService';
 import type { 
   ContractConfig, 
   CreateCollectionRequest, 
@@ -7,80 +8,218 @@ import type {
   TokenMintedEvent,
   EarningsClaimedEvent 
 } from '@/types/nft';
+import { getCurrentConfig } from '@/config/environment';
 
 // Smart Contract ABIs (actual deployed contract ABIs)
 const TRIP_FACTORY_ABI = [
-  'function createTripCollection(string name, string symbol, uint256 maxSupply, uint256 price, uint96 royaltyFee) external returns (address)',
-  'event CollectionCreated(address indexed newCollectionAddress, address indexed creator, string name, string symbol, uint256 maxSupply, uint256 price)',
-  'function getDeployedCollections() external view returns (address[])',
-  'function getCollectionCount() external view returns (uint256)',
-  'function setOwner(address newOwner) external',
-  'function owner() external view returns (address)'
+  {
+    "type": "function",
+    "name": "createTripCollection",
+    "stateMutability": "nonpayable",
+    "inputs": [
+      { "type": "string", "name": "name" },
+      { "type": "string", "name": "symbol" },
+      { "type": "uint256", "name": "maxSupply" },
+      { "type": "uint256", "name": "mintPrice" },
+      { "type": "uint256", "name": "experienceFee" },
+      { "type": "uint256", "name": "creatorExperienceSplit" },
+      { "type": "uint96", "name": "royaltyFee" }
+    ],
+    "outputs": [
+      { "type": "address", "name": "" }
+    ]
+  },
+  {
+    "type": "function",
+    "name": "getDeployedCollections",
+    "stateMutability": "view",
+    "inputs": [],
+    "outputs": [
+      { "type": "address[]", "name": "" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "CollectionCreated",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "type": "address", "name": "newCollectionAddress" },
+      { "indexed": true, "type": "address", "name": "creator" },
+      { "indexed": false, "type": "string", "name": "name" },
+      { "indexed": false, "type": "string", "name": "symbol" },
+      { "indexed": false, "type": "uint256", "name": "maxSupply" },
+      { "indexed": false, "type": "uint256", "name": "mintPrice" }
+    ]
+  }
 ];
 
 const TRIP_NFT_ABI = [
-  // Constructor parameters
-  'constructor(string name, string symbol, uint256 maxSupply, uint256 initialMintPrice, address initialOwner, address royaltyRecipient, uint96 royaltyPercentage)',
-  
-  // Core functions
-  'function mint(uint256 quantity) external payable',
-  'function setBaseURI(string newBaseURI) external',
-  'function setMintPrice(uint256 newPrice) external',
-  'function withdraw() external',
-  
-  // View functions
-  'function name() external view returns (string)',
-  'function symbol() external view returns (string)',
-  'function totalSupply() external view returns (uint256)',
-  'function MAX_SUPPLY() external view returns (uint256)',
-  'function mintPrice() external view returns (uint256)',
-  'function ownerOf(uint256 tokenId) external view returns (address)',
-  'function balanceOf(address owner) external view returns (uint256)',
-  'function tokenURI(uint256 tokenId) external view returns (string)',
-  'function owner() external view returns (address)',
-  
-  // ERC-721 functions
-  'function approve(address to, uint256 tokenId) external',
-  'function getApproved(uint256 tokenId) external view returns (address)',
-  'function setApprovalForAll(address operator, bool approved) external',
-  'function isApprovedForAll(address owner, address operator) external view returns (bool)',
-  'function transferFrom(address from, address to, uint256 tokenId) external',
-  'function safeTransferFrom(address from, address to, uint256 tokenId) external',
-  'function safeTransferFrom(address from, address to, uint256 tokenId, bytes data) external',
-  'function tokenOfOwnerByIndex(address owner, uint256 index) external view returns (uint256)',
-  'function tokenByIndex(uint256 index) external view returns (uint256)',
-  
-  // ERC-2981 royalty functions
-  'function royaltyInfo(uint256 tokenId, uint256 salePrice) external view returns (address receiver, uint256 royaltyAmount)',
-  'function supportsInterface(bytes4 interfaceId) external view returns (bool)',
-  
+  // Core Functions
+  {
+    "inputs": [{"type": "uint256", "name": "quantity"}],
+    "name": "mint",
+    "outputs": [],
+    "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [{"type": "uint256", "name": "tokenId"}],
+    "name": "payForExperience",
+    "outputs": [],
+    "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [{"type": "uint256", "name": "tokenId"}, {"type": "uint256", "name": "newFee"}],
+    "name": "setExperienceFee",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+
+  // View Functions
+  {
+    "inputs": [],
+    "name": "getPublicMetadata",
+    "outputs": [{"type": "string"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "experienceFee",
+    "outputs": [{"type": "uint256"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "mintPrice",
+    "outputs": [{"type": "uint256"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{"type": "uint256", "name": "tokenId"}],
+    "name": "tokenURI",
+    "outputs": [{"type": "string"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{"type": "uint256", "name": "tokenId"}],
+    "name": "ownerOf",
+    "outputs": [{"type": "address"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "collectionCreator",
+    "outputs": [{"type": "address"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+
+  // ERC-721 Functions
+  {
+    "inputs": [{"type": "address", "name": "owner"}],
+    "name": "balanceOf",
+    "outputs": [{"type": "uint256"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "totalSupply",
+    "outputs": [{"type": "uint256"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "name",
+    "outputs": [{"type": "string"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "symbol",
+    "outputs": [{"type": "string"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+
   // Events
-  'event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)',
-  'event Approval(address indexed owner, address indexed approved, uint256 indexed tokenId)',
-  'event ApprovalForAll(address indexed owner, address indexed operator, bool approved)',
-  'event BaseURIUpdated(string newBaseURI)',
-  'event MintPriceUpdated(uint256 newPrice)'
+  {
+    "anonymous": false,
+    "inputs": [
+      {"indexed": true, "type": "address", "name": "from"},
+      {"indexed": true, "type": "address", "name": "to"},
+      {"indexed": true, "type": "uint256", "name": "tokenId"}
+    ],
+    "name": "Transfer",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {"indexed": true, "type": "address", "name": "to"},
+      {"indexed": true, "type": "uint256", "name": "tokenId"},
+      {"indexed": false, "type": "uint256", "name": "quantity"}
+    ],
+    "name": "Mint",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {"indexed": true, "type": "address", "name": "user"},
+      {"indexed": true, "type": "uint256", "name": "tokenId"},
+      {"indexed": false, "type": "uint256", "name": "amount"}
+    ],
+    "name": "ExperiencePaid",
+    "type": "event"
+  }
 ];
 
 const STREAMING_LEDGER_ABI = [
-  // Constructor
-  'constructor(address initialOwner, address initialTrustedSigner)',
-  
-  // Core functions
-  'function deposit() external payable',
-  'function withdraw(uint256 amount, bytes signature) external',
-  'function setTrustedSigner(address newSigner) external',
-  'function emergencyWithdraw() external',
-  
-  // View functions
-  'function getContractBalance() external view returns (uint256)',
-  'function getUserCredit(address user) external view returns (uint256)',
-  'function owner() external view returns (address)',
-  'function trustedSigner() external view returns (address)',
-  
-  // Events
-  'event Deposited(address indexed user, uint256 amount)',
-  'event Withdrawn(address indexed user, uint256 amount)'
+  {
+    "type": "function",
+    "name": "deposit",
+    "stateMutability": "payable",
+    "inputs": [],
+    "outputs": []
+  },
+  {
+    "type": "function",
+    "name": "withdraw",
+    "stateMutability": "nonpayable",
+    "inputs": [
+      { "type": "uint256", "name": "amount" },
+      { "type": "bytes", "name": "signature" }
+    ],
+    "outputs": []
+  },
+  {
+    "type": "event",
+    "name": "Deposited",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "type": "address", "name": "user" },
+      { "indexed": false, "type": "uint256", "name": "amount" }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "Withdrawn",
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "type": "address", "name": "user" },
+      { "indexed": false, "type": "uint256", "name": "amount" }
+    ]
+  }
 ];
 
 export class ContractService {
@@ -114,6 +253,8 @@ export class ContractService {
         request.symbol,
         request.maxSupply,
         request.price, // Already parsed to BigInt
+        1000, // experienceFee - default value
+        500, // creatorExperienceSplit - default value (50%)
         request.royaltyPercentage // This will be converted to uint96 by ethers
       );
 
@@ -217,15 +358,14 @@ export class ContractService {
         this.provider
       );
 
-      const [totalSupply, maxSupply, price] = await Promise.all([
+      const [totalSupply, price] = await Promise.all([
         collection.totalSupply(),
-        collection.MAX_SUPPLY(),
         collection.mintPrice()
       ]);
 
       return {
         totalSupply: totalSupply.toString(),
-        maxSupply: maxSupply.toString(),
+        maxSupply: '100', // Default value since maxSupply function doesn't exist
         price: ethers.formatEther(price)
       };
     } catch (error) {
@@ -245,37 +385,31 @@ export class ContractService {
         this.provider
       );
 
-      const [totalSupply, maxSupply, price, name, symbol] = await Promise.all([
+      const [totalSupply, price, name, symbol, publicMetadata, creator] = await Promise.all([
         collection.totalSupply(),
-        collection.MAX_SUPPLY(),
         collection.mintPrice(),
         collection.name(),
-        collection.symbol()
+        collection.symbol(),
+        collection.getPublicMetadata(),
+        collection.collectionCreator()
       ]);
+      
+      // Since maxSupply function doesn't exist, we'll use a default or try to get it from constructor
+      const maxSupply = 100; // Default value, you might want to store this in metadata
 
-      // Try to get collection metadata from IPFS if available
+      // Try to get collection metadata from IPFS using tokenURI for token 0
       let description = 'A unique audio-visual experience collection';
       let imageUrl = '/images/sunrise_energizer.png';
-      let audioCid = '';
-      let patternCid = '';
-      let metadataCid = '';
+      const category = 'Audio-Visual';
+      const intensity = 'Medium';
+      const duration = 'Unknown';
 
+      console.log('publicMetadata', publicMetadata);
       try {
-        // Check if there's a baseURI set for the collection
-        // This would typically point to IPFS metadata
-        const baseURI = await collection.baseURI?.() || '';
-        if (baseURI && baseURI !== '') {
-          // Try to fetch collection metadata from IPFS
-          const collectionMetadataUrl = `${baseURI}collection.json`;
-          const response = await fetch(collectionMetadataUrl);
-          if (response.ok) {
-            const ipfsMetadata = await response.json();
-            description = ipfsMetadata.description || description;
-            imageUrl = ipfsMetadata.image || imageUrl;
-            audioCid = ipfsMetadata.audio || audioCid;
-            patternCid = ipfsMetadata.pattern || patternCid;
-            metadataCid = ipfsMetadata.metadata || metadataCid;
-          }
+        if (publicMetadata) {
+          const parsedMetadata = JSON.parse(publicMetadata);
+          description = parsedMetadata.description || description;
+          imageUrl = parsedMetadata.image || imageUrl;
         }
       } catch (ipfsError) {
         console.warn('Failed to fetch collection IPFS metadata:', ipfsError);
@@ -287,19 +421,16 @@ export class ContractService {
         name: name,
         symbol: symbol,
         description,
-        creator: await collection.owner(),
+        creator: creator,
         maxSupply: Number(maxSupply),
         currentSupply: Number(totalSupply),
         price: ethers.formatEther(price),
-        audioCid,
-        patternCid,
-        metadataCid,
         createdAt: new Date().toISOString(),
-        imageUrl,
+        imageUrl: getPublicGatewayUrl(imageUrl),
         isActive: true,
         royaltyPercentage: 1000, // 10% default
-        tags: [],
-        category: 'Audio-Visual'
+        tags: [category, intensity, duration].filter(Boolean),
+        category: category
       };
     } catch (error) {
       console.error('Error getting collection:', error);
@@ -318,8 +449,11 @@ export class ContractService {
         this.provider
       );
 
-      // Get the actual token URI from the contract
-      const tokenURI = await collection.tokenURI(tokenId);
+      const [tokenURI, owner, creator] = await Promise.all([
+        collection.tokenURI(tokenId),
+        collection.ownerOf(tokenId),
+        collection.collectionCreator()
+      ]);
       
       // Fetch metadata from IPFS
       let metadata = {
@@ -349,15 +483,13 @@ export class ContractService {
       } catch (ipfsError) {
         console.warn(`Failed to fetch IPFS metadata for token ${tokenId}:`, ipfsError);
       }
-
-      const owner = await collection.ownerOf(tokenId);
       
       return {
         id: `${collectionAddress}-${tokenId}`,
         tokenId: tokenId.toString(),
         collectionAddress,
         owner,
-        creator: await collection.owner(),
+        creator,
         metadata,
         mintedAt: new Date().toISOString(),
         isListed: false
@@ -379,13 +511,17 @@ export class ContractService {
         this.provider
       );
 
-      const totalSupply = await collection.totalSupply();
+      const [totalSupply, creator] = await Promise.all([
+        collection.totalSupply(),
+        collection.collectionCreator()
+      ]);
       const tokens: any[] = [];
 
       // Get all tokens in the collection
       for (let i = 0; i < totalSupply; i++) {
         try {
-          const tokenId = await collection.tokenByIndex(i);
+          const tokenId = i; // Since tokenByIndex doesn't exist, assume sequential token IDs
+          console.log('tokenId', tokenId);
           const owner = await collection.ownerOf(tokenId);
           
           // Get the actual token URI from the contract
@@ -403,7 +539,14 @@ export class ContractService {
 
           try {
             if (tokenURI && tokenURI !== '') {
-              const response = await fetch(tokenURI);
+              // Convert IPFS URI to HTTP gateway URL
+              let metadataUrl = tokenURI;
+              if (tokenURI.startsWith('ipfs://')) {
+                const ipfsHash = tokenURI.replace('ipfs://', '');
+                metadataUrl = `https://gateway.pinata.cloud/ipfs/${ipfsHash}`;
+              }
+              
+              const response = await fetch(metadataUrl);
               if (response.ok) {
                 const ipfsMetadata = await response.json();
                 metadata = {
@@ -411,7 +554,7 @@ export class ContractService {
                   description: ipfsMetadata.description || metadata.description,
                   image: ipfsMetadata.image || metadata.image,
                   audio: ipfsMetadata.audio || metadata.audio,
-                  pattern: ipfsMetadata.pattern || metadata.pattern,
+                  pattern: ipfsMetadata.streaming_data || ipfsMetadata.pattern || metadata.pattern,
                   attributes: ipfsMetadata.attributes || metadata.attributes
                 };
               }
@@ -425,7 +568,7 @@ export class ContractService {
             tokenId: tokenId.toString(),
             collectionAddress,
             owner,
-            creator: await collection.owner(),
+            creator,
             metadata,
             mintedAt: new Date().toISOString(),
             isListed: false
@@ -468,6 +611,7 @@ export class ContractService {
    */
   async getDeployedCollections(): Promise<string[]> {
     try {
+      console.log('tripFactoryAddress', this.config.tripFactoryAddress);
       const factory = new ethers.Contract(
         this.config.tripFactoryAddress,
         TRIP_FACTORY_ABI,
@@ -481,42 +625,7 @@ export class ContractService {
     }
   }
 
-  /**
-   * Get collection count from factory
-   */
-  async getCollectionCount(): Promise<number> {
-    try {
-      const factory = new ethers.Contract(
-        this.config.tripFactoryAddress,
-        TRIP_FACTORY_ABI,
-        this.provider
-      );
 
-      const count = await factory.getCollectionCount();
-      return Number(count);
-    } catch (error) {
-      console.error('Error getting collection count:', error);
-      throw new Error(`Failed to get collection count: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  /**
-   * Get factory owner
-   */
-  async getFactoryOwner(): Promise<string> {
-    try {
-      const factory = new ethers.Contract(
-        this.config.tripFactoryAddress,
-        TRIP_FACTORY_ABI,
-        this.provider
-      );
-
-      return await factory.owner();
-    } catch (error) {
-      console.error('Error getting factory owner:', error);
-      throw new Error(`Failed to get factory owner: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
 
   /**
    * Deposit ETH to StreamingLedger for credits
@@ -689,6 +798,8 @@ export class ContractService {
         request.symbol,
         request.maxSupply,
         request.price, // Already BigInt
+        1000, // experienceFee - default value
+        500, // creatorExperienceSplit - default value (50%)
         request.royaltyPercentage // This will be converted to uint96
       );
 
@@ -731,10 +842,25 @@ export function createContractService(config: ContractConfig, signer: ethers.Sig
   return new ContractService(config, signer);
 }
 
-// Default configuration for Sepolia testnet
+// Default configuration - automatically uses current environment
 export const DEFAULT_CONTRACT_CONFIG: ContractConfig = {
-  tripFactoryAddress: '0x04b307e55A67b7a2704667BAf64091AB54ee5B82',
-  streamingLedgerAddress: '0x056D004a46972F106fa420309C1ea91f44406272',
-  chainId: 11155111, // Sepolia testnet
+  tripFactoryAddress: getCurrentConfig().contracts.tripFactory,
+  streamingLedgerAddress: getCurrentConfig().contracts.streamingLedger,
+  chainId: getCurrentConfig().chainId,
+  rpcUrl: getCurrentConfig().rpcUrl
+};
+
+// Legacy configurations for backward compatibility
+export const LOCAL_CONFIG: ContractConfig = {
+  tripFactoryAddress: '0x5FbDB2315678afecb367f032d93F642f64180aa3',
+  streamingLedgerAddress: '0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512',
+  chainId: 31337,
+  rpcUrl: 'http://localhost:8545'
+};
+
+export const SEPOLIA_CONFIG: ContractConfig = {
+  tripFactoryAddress: '0xA0425Dbe5B9D5f3dE15206f7F908A209357C4aFA',
+  streamingLedgerAddress: '0x2abEA1c905c8547E4D7e2000257A77e52cB8A4cC',
+  chainId: 11155111,
   rpcUrl: 'https://lb.drpc.org/sepolia/AplHGB2v9khYpYVNxc5za0FG8GqzeK8R8IrYIgaNGuYu'
 };

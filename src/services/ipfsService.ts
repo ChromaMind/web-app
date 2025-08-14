@@ -2,7 +2,7 @@ import { PinataSDK } from 'pinata';
 
 // Pinata configuration
 const PINATA_JWT = process.env.NEXT_PUBLIC_PINATA_JWT || '';
-const GATEWAY_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || 'https://gateway.pinata.cloud/ipfs/';
+const GATEWAY_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || 'https://ivory-neat-unicorn-8.mypinata.cloud/ipfs/';
 
 // Initialize Pinata client
 const pinata = new PinataSDK({
@@ -125,6 +125,19 @@ export async function uploadMultipleToIPFS(
  * @returns Full IPFS gateway URL
  */
 export function getIPFSURL(hash: string): string {
+  return `${GATEWAY_URL}${hash}`;
+}
+
+/**
+ * Get public gateway URL from IPFS URI
+ * @param ipfsUri - IPFS URI (e.g., "ipfs://...")
+ * @returns Full public gateway URL
+ */
+export function getPublicGatewayUrl(ipfsUri: string): string {
+  if (!ipfsUri || !ipfsUri.startsWith('ipfs://')) {
+    return ipfsUri; // Return original if not a valid IPFS URI
+  }
+  const hash = ipfsUri.replace('ipfs://', '');
   return `${GATEWAY_URL}${hash}`;
 }
 
