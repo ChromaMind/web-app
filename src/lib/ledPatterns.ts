@@ -4,7 +4,6 @@ export type FrameRGB = Uint8Array;
 export type PatternId =
     | "arrow"
     | "double-arrow"
-    // | "expandexpand"
     | "top"
     | "bottom"
     | "top-bottom"
@@ -16,39 +15,18 @@ export type PatternId =
 export interface PatternContext {
     rows: number;
     cols: number;
-    t: number;        // seconds since start
-    bass: number;     // 0..255
-    mid: number;      // 0..255
-    treble: number;   // 0..255
-    energy: number;   // 0..255
+    t: number;        // seconds since start (float)
+    bass: number;     // unused in binary color logic
+    mid: number;      // unused
+    treble: number;   // unused
+    energy: number;   // unused
 }
 
 export const toPhysicalIndex = (x:number, y:number, cols:number) =>
     y % 2 === 0 ? y * cols + x : y * cols + (cols - 1 - x);
 
 const OFF: RGB = [0, 0, 0];
-
-const clamp255 = (v:number) => (v < 0 ? 0 : v > 255 ? 255 : v) | 0;
-
-/** HSV (0..360, 0..1, 0..1) → RGB (0..255 ints) */
-function hsvToRgb(h:number, s:number, v:number): RGB {
-    h = (h % 360 + 360) % 360;
-    const c = v * s;
-    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
-    const m = v - c;
-    let r = 0, g = 0, b = 0;
-    if (h < 60)       { r = c; g = x; b = 0; }
-    else if (h < 120) { r = x; g = c; b = 0; }
-    else if (h < 180) { r = 0; g = c; b = x; }
-    else if (h < 240) { r = 0; g = x; b = c; }
-    else if (h < 300) { r = x; g = 0; b = c; }
-    else              { r = c; g = 0; b = x; }
-    return [
-        clamp255(Math.round((r + m) * 255)),
-        clamp255(Math.round((g + m) * 255)),
-        clamp255(Math.round((b + m) * 255)),
-    ];
-}
+const ON_WHITE: RGB = [255, 255, 255]; // used by "white" pattern
 
 const makeFrame = (rows:number, cols:number, colorAt:(x:number,y:number)=>RGB) => {
     const out = new Uint8Array(rows * cols * 3);
@@ -56,176 +34,132 @@ const makeFrame = (rows:number, cols:number, colorAt:(x:number,y:number)=>RGB) =
         for (let x = 0; x < cols; x++) {
             const [r, g, b] = colorAt(x, y);
             const base = toPhysicalIndex(x, y, cols) * 3;
-            out[base] = r | 0; out[base + 1] = g | 0; out[base + 2] = b | 0;
+            out[base] = r; out[base + 1] = g; out[base + 2] = b;
         }
     }
     return out;
 };
 
-// ENHANCED: More aggressive brightness boost with better curve
-const boost = (v:number) => {
-    // Ensure minimum brightness for any non-zero input
-    if (v <= 0) return 0;
+/* ===== Bright color picker (no fades) =====
+   - Fixed neon palette (all channels near 255)
+   - Deterministic per-frame via a fast hash of (x,y,frame)
+*/
+const BRIGHT_PALETTE: RGB[] = [
+    [255,   0,   0], // red
+    [  0, 255,   0], // lime
+    [  0,   0, 255], // blue
+    [255, 255,   0], // yellow
+    [255,   0, 255], // magenta
+    [  0, 255, 255], // cyan
+    [255, 128,   0], // orange
+    [128,   0, 255], // violet
+    [255,  20, 147], // deeppink
+    [ 50, 205,  50], // limegreen
+    [135, 206, 250], // lightskyblue
+    [255, 105, 180], // hotpink
+    [  0, 255, 127], // spring green
+    [173, 255,  47], // greenyellow
+    [255,  69,   0], // orangered
+    [124, 252,   0], // lawn green
+];
 
-    // More aggressive boost curve: combines sqrt for low values + linear scaling
-    const normalized = v / 255;
-    const boosted = Math.min(1, 0.3 + (normalized * 0.7) + Math.sqrt(normalized) * 0.4);
-    return clamp255(Math.round(boosted * 255));
-};
-
-// ENHANCED: Better energy-to-brightness mapping
-const energyBrightness = (energy:number) => {
-    // Minimum base brightness + energy scaling
-    const minBright = 1; // 40% minimum brightness
-    const normalized = energy / 255;
-    return Math.min(1, minBright + (normalized * 0.6));
-};
-
-// ENHANCED: Scale color by brightness factor
-const scaleColor = (color: RGB, brightnessFactor: number): RGB => {
-    return [
-        clamp255(Math.round(color[0] * brightnessFactor)),
-        clamp255(Math.round(color[1] * brightnessFactor)),
-        clamp255(Math.round(color[2] * brightnessFactor))
-    ];
-};
-
-/** Beat-reactive color (hue ~ bass+time, sat ~ mids, val ~ treble) */
-function beatColor(t:number, bass:number, mid:number, treble:number, energy:number = 128): RGB {
-    const hue = (t * 80 + bass * 0.5) % 360;
-    const sat = Math.min(1, 0.7 + (mid / 400)); // Slightly higher saturation
-
-    // ENHANCED: Better brightness calculation using energy + treble
-    const val = Math.min(1, 0.6 + (treble / 400) + (energy / 600));
-
-    return hsvToRgb(hue, sat, val);
+function hash32(x:number, y:number, f:number): number {
+    // simple spatial+frame hash (all integers)
+    let h = (x * 73856093) ^ (y * 19349663) ^ (f * 83492791);
+    h ^= h >>> 16;
+    h = (h * 0x7feb352d) | 0;
+    h ^= h >>> 15;
+    h = (h * 0x846ca68b) | 0;
+    h ^= h >>> 16;
+    return h >>> 0;
 }
 
-// ---------------- Patterns ----------------
+function brightColorFor(x:number, y:number, frameIdx:number): RGB {
+    const idx = hash32(x, y, frameIdx) % BRIGHT_PALETTE.length;
+    return BRIGHT_PALETTE[idx];
+}
 
-const pArrow = ({ rows, cols, t, energy, bass, mid, treble }: PatternContext) => {
-    const speed = 15 + (energy / 12);
+// Convert floating seconds to an integer frame index (no blending)
+function frameIndex(t:number, fps:number = 30): number {
+    return Math.floor(t * fps);
+}
+
+/* ===== Patterns (binary geometry; ON pixels get bright solid colors) ===== */
+
+const pArrow = ({ rows, cols, t }: PatternContext) => {
+    const f = frameIndex(t);
+    const speed = 15;
     const pos = Math.floor((t * speed) % (cols * 2));
     const xHead = pos < cols ? pos : cols - 1 - (pos - cols);
+    return makeFrame(rows, cols, (x, y) => (x === xHead ? brightColorFor(x, y, f) : OFF));
+};
+const pDoubleArrow = ({ rows, cols, t }: PatternContext) => {
+    const f = frameIndex(t);
+    const speed = 10; // increase for faster gap travel
+    const halfCols = Math.ceil(cols / 2);
 
-    // ENHANCED: Use energy for brightness
-    const baseColor = beatColor(t, bass, mid, treble, energy);
-    const brightness = energyBrightness(energy);
-    const col = scaleColor(baseColor, brightness);
+    // gap index moves from edges -> center, then wraps
+    const p = Math.floor(t * speed) % halfCols;
+    const leftGap = p;
+    const rightGap = cols - 1 - p;
 
-    return makeFrame(rows, cols, (x) => (x === xHead ? col : OFF));
+    // set to 2 if you want a thicker empty band
+    const gapThickness = 1;
+
+    return makeFrame(rows, cols, (x, y) => {
+        const inLeftGap = Math.abs(x - leftGap) < gapThickness;
+        const inRightGap = Math.abs(x - rightGap) < gapThickness;
+        const off = inLeftGap || inRightGap;
+        return off ? OFF : brightColorFor(x, y, f);
+    });
 };
 
-const pDoubleArrow = ({ rows, cols, t, bass, mid, treble, energy }: PatternContext) => {
-    const speed = 12 + (bass / 20);
-    const p = Math.floor((t * speed) % cols);
-    const left = p, right = cols - 1 - p;
 
-    // ENHANCED: Use bass + energy for brightness
-    const baseColor = beatColor(t + 1, bass, mid, treble, energy);
-    const brightness = Math.min(1, energyBrightness(bass) + energyBrightness(energy) * 0.3);
-    const col = scaleColor(baseColor, brightness);
 
-    return makeFrame(rows, cols, (x) => (x === left || x === right ? col : OFF));
+const pTop = ({ rows, cols, t }: PatternContext) => {
+    const f = frameIndex(t);
+    return makeFrame(rows, cols, (x, y) => (y === 0 ? brightColorFor(x, y, f) : OFF));
 };
 
-const pExpand = ({ rows, cols, t, energy, bass, mid, treble }: PatternContext) => {
-    const center = (cols - 1) / 2;
-    const speed = 4 + (energy / 40);
-    const radius = (Math.sin(t * speed) * 0.5 + 0.5) * center;
-
-    // ENHANCED: Dynamic brightness based on expansion
-    const expansionPhase = Math.sin(t * speed) * 0.5 + 0.5;
-    const baseColor = beatColor(t + 2, bass, mid, treble, energy);
-    const brightness = Math.min(1, energyBrightness(energy) + expansionPhase * 0.4);
-    const col = scaleColor(baseColor, brightness);
-
-    return makeFrame(rows, cols, (x) => (Math.abs(x - center) <= radius ? col : OFF));
+const pBottom = ({ rows, cols, t }: PatternContext) => {
+    const f = frameIndex(t);
+    return makeFrame(rows, cols, (x, y) => (y === rows - 1 ? brightColorFor(x, y, f) : OFF));
 };
 
-// ENHANCED: Top row with much better brightness
-const pTop = ({ rows, cols, treble, t, bass, mid, energy }: PatternContext) => {
-    // Combine treble and energy for better brightness
-    const val = Math.max(boost(treble), boost(energy * 0.8));
-    const baseColor = beatColor(t, bass, mid, treble, energy);
-    const brightness = Math.min(1, (val / 255) + 0.3); // Ensure minimum 30% brightness
-    const col = scaleColor(baseColor, brightness);
-
-    return makeFrame(rows, cols, (_x, y) => (y === 0 ? col : OFF));
+const pTopBottom = ({ rows, cols, t }: PatternContext) => {
+    const f = frameIndex(t);
+    return makeFrame(rows, cols, (x, y) =>
+        (y === 0 || y === rows - 1) ? brightColorFor(x, y, f) : OFF
+    );
 };
 
-// ENHANCED: Bottom row with much better brightness
-const pBottom = ({ rows, cols, bass, t, mid, treble, energy }: PatternContext) => {
-    // Combine bass and energy for better brightness
-    const val = Math.max(boost(bass), boost(energy * 0.8));
-    const baseColor = beatColor(t, bass, mid, treble, energy);
-    const brightness = Math.min(1, (val / 255) + 0.3); // Ensure minimum 30% brightness
-    const col = scaleColor(baseColor, brightness);
-
-    return makeFrame(rows, cols, (_x, y) => (y === rows - 1 ? col : OFF));
-};
-
-// ENHANCED: Top + Bottom with better brightness
-const pTopBottom = ({ rows, cols, bass, treble, t, mid, energy }: PatternContext) => {
-    // Use the max of bass, treble, and energy for brightness
-    const val = Math.max(boost((bass + treble) / 2), boost(energy * 0.9));
-    const baseColor = beatColor(t, bass, mid, treble, energy);
-    const brightness = Math.min(1, (val / 255) + 0.35); // Ensure minimum 35% brightness
-    const col = scaleColor(baseColor, brightness);
-
-    return makeFrame(rows, cols, (_x, y) => (y === 0 || y === rows - 1 ? col : OFF));
-};
-
-// ENHANCED: Shift pattern with better brightness
-const pShift = ({ rows, cols, t, mid, bass, treble, energy }: PatternContext) => {
-    const speed = 18 + (mid / 18);
+const pShift = ({ rows, cols, t }: PatternContext) => {
+    const f = frameIndex(t);
+    const speed = 18;
     const s = Math.floor((t * speed) % cols);
-
-    // Use mid and energy for brightness
-    const baseColor = beatColor(t, bass, mid, treble, energy);
-    const brightness = Math.min(1, energyBrightness(mid) + energyBrightness(energy) * 0.4);
-    const col = scaleColor(baseColor, brightness);
-
-    return makeFrame(rows, cols, (x) => (((x + s) % 2 === 0) ? col : OFF));
+    return makeFrame(rows, cols, (x, y) => (((x + s) % 2 === 0) ? brightColorFor(x, y, f) : OFF));
 };
 
-// ENHANCED: Sparkle with better brightness and more sparkles
-const pSparkle = ({ rows, cols, energy, t, bass, mid, treble }: PatternContext) => {
-    // Increase base density and make it more energy-reactive
-    const density = 0.4 + (energy / 600); // Increased base density from 0.25
-    const baseColor = beatColor(t, bass, mid, treble, energy);
-    const brightness = energyBrightness(energy);
-    const col = scaleColor(baseColor, brightness);
-
-    return makeFrame(rows, cols, () => (Math.random() < density ? col : OFF));
+const pSparkle = ({ rows, cols, t }: PatternContext) => {
+    const f = frameIndex(t);
+    const density = 0.5; // 0..1 fraction of pixels ON per frame
+    return makeFrame(rows, cols, (x, y) => (Math.random() < density ? brightColorFor(x, y, f) : OFF));
 };
 
-// MUCH BRIGHTER: White pattern - always very bright
-const pWhite = ({ rows, cols, energy }: PatternContext) => {
-    // Always very bright, with slight energy variation
-    const brightness = Math.max(0.95, energyBrightness(energy)); // 95% minimum brightness!
-    const intensity = clamp255(Math.round(255 * brightness));
-    return makeFrame(rows, cols, () => [intensity, intensity, intensity]);
-};
+const pWhite = ({ rows, cols }: PatternContext) =>
+    makeFrame(rows, cols, () => ON_WHITE); // all ON, solid white
 
-// ENHANCED: Inward pattern with better brightness
-const pInward = ({ rows, cols, t, bass, mid, treble, energy }: PatternContext) => {
-    const speed = 14 + (bass / 24);
+const pInward = ({ rows, cols, t }: PatternContext) => {
+    const f = frameIndex(t);
+    const speed = 14;
     const p = Math.floor((t * speed) % Math.ceil(cols / 2));
     const left = p, right = cols - 1 - p;
-
-    // Use bass and energy for brightness
-    const baseColor = beatColor(t, bass, mid, treble, energy);
-    const brightness = Math.min(1, energyBrightness(bass) + energyBrightness(energy) * 0.3);
-    const col = scaleColor(baseColor, brightness);
-
-    return makeFrame(rows, cols, (x) => (x === left || x === right ? col : OFF));
+    return makeFrame(rows, cols, (x, y) => (x === left || x === right ? brightColorFor(x, y, f) : OFF));
 };
 
 export const PATTERNS: Record<PatternId, (c: PatternContext) => FrameRGB> = {
     arrow: pArrow,
     "double-arrow": pDoubleArrow,
-    // expand: pExpand,
     top: pTop,
     bottom: pBottom,
     "top-bottom": pTopBottom,
@@ -235,11 +169,9 @@ export const PATTERNS: Record<PatternId, (c: PatternContext) => FrameRGB> = {
     inward: pInward,
 };
 
-// Keep this authoritative and in the UI (no hardcoded strings there)
 export const ALL_PATTERN_IDS: PatternId[] = [
     "arrow",
     "double-arrow",
-    // "expand",
     "top",
     "bottom",
     "top-bottom",
@@ -249,11 +181,9 @@ export const ALL_PATTERN_IDS: PatternId[] = [
     "inward",
 ];
 
-// Pretty labels for the select UI
 export const PATTERN_LABELS: Record<PatternId, string> = {
     arrow: "↔ Arrow",
     "double-arrow": "⇄ Double Arrow",
-    // expand: "Expanding",
     top: "Top Row",
     bottom: "Bottom Row",
     "top-bottom": "Top + Bottom",
@@ -263,13 +193,9 @@ export const PATTERN_LABELS: Record<PatternId, string> = {
     inward: ">-< Inward",
 };
 
-export const renderPattern = (id: PatternId, ctx: PatternContext) =>
-    PATTERNS[id](ctx);
+export const renderPattern = (id: PatternId, ctx: PatternContext) => PATTERNS[id](ctx);
 
-// ENHANCED: Better auto-switching with more variety
-export function choosePatternIdAuto(bass: number, energy: number, t: number): PatternId {
-    // if (energy < 180) return "white";
-    // if (bass > 180)  return (Math.floor(t * 1.5) % 2 ? "expand" : "inward");
-    // if (energy > 160) return "sparkle";
+// simple round-robin auto (no audio coupling)
+export function choosePatternIdAuto(_bass: number, _energy: number, t: number): PatternId {
     return ALL_PATTERN_IDS[Math.floor((t * 1.5) % ALL_PATTERN_IDS.length)];
 }
