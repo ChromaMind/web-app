@@ -30,6 +30,7 @@ interface DeployFormData {
   mintPrice: string;
   audioFile: File | null;
   patternFile: File | null;
+  imageFile: File | null;
 }
 
 export function TripUploader() {
@@ -44,19 +45,18 @@ export function TripUploader() {
     mintPrice: '0.01',
     audioFile: null,
     patternFile: null,
+    imageFile: null,
   });
 
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [deployedMetadata, setDeployedMetadata] = useState<NFTMetadata | null>(null);
-  const [deployedTokenId, setDeployedTokenId] = useState<number | null>(null);
 
   // Contract deployment state
   const [isDeploying, setIsDeploying] = useState(false);
   const [isDeployed, setIsDeployed] = useState(false);
   const [deployedContractAddress, setDeployedContractAddress] = useState<string>('');
   const [deploymentError, setDeploymentError] = useState<string>('');
-  const [deploymentTxHash, setDeploymentTxHash] = useState<string>('');
 
   // File upload handlers
   const handleAudioUpload = useCallback((file: File | null) => {
@@ -77,10 +77,20 @@ export function TripUploader() {
     setFormData(prev => ({ ...prev, patternFile: file }));
   }, []);
 
+  const handleImageUpload = useCallback((file: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      alert('Please upload an image file');
+      return;
+    }
+    setFormData(prev => ({ ...prev, imageFile: file }));
+  }, []);
+
   // IPFS upload state
   const [uploadedFiles, setUploadedFiles] = useState<{
     audio?: IPFSUploadResult;
     pattern?: IPFSUploadResult;
+    image?: IPFSUploadResult;
     metadata?: IPFSUploadResult;
   }>({});
 
@@ -102,10 +112,15 @@ export function TripUploader() {
     }
   }, []);
 
-  // Deploy to blockchain using TripFactory
-  const deployToBlockchain = useCallback(async () => {
-    if (!address || !uploadedFiles.metadata) {
-      alert('Please connect wallet and upload files first');
+  // Step 1: Deploy the trip NFT contract first
+  const deployTripContract = useCallback(async () => {
+    if (!address) {
+      alert('Please connect wallet first');
+      return;
+    }
+
+    if (!formData.name || !formData.maxSupply || !formData.mintPrice) {
+      alert('Please fill in all required fields');
       return;
     }
 
@@ -113,56 +128,129 @@ export function TripUploader() {
     setDeploymentError('');
 
     try {
-      // Get the signer from the connected wallet
+      // Check if user is on Sepolia network
       const provider = new ethers.BrowserProvider(window.ethereum);
+      const network = await provider.getNetwork();
+      if (network.chainId !== BigInt(11155111)) { // Sepolia chain ID
+        alert('Please switch to Sepolia testnet to deploy your Trip NFT');
+        return;
+      }
+
+      // Get the signer from the connected wallet
       const signer = await provider.getSigner();
 
       // Create contract service
       const contractService = createContractService(DEFAULT_CONTRACT_CONFIG, signer);
 
       // Prepare collection data
+      const priceInWei = ethers.parseEther(formData.mintPrice.toString());
       const collectionData = {
         name: formData.name,
         symbol: 'TRIP',
         maxSupply: formData.maxSupply,
-        price: ethers.parseEther(formData.mintPrice),
+        price: priceInWei,
         royaltyPercentage: 1000, // 10% royalty
       };
 
       console.log('Deploying collection with data:', collectionData);
 
       // Deploy the collection
-      const txHash = await contractService.createTripCollection(collectionData);
-      setDeploymentTxHash(txHash);
-
-      console.log('Collection deployment transaction:', txHash);
-
-      // Wait for transaction confirmation
-      const receipt = await contractService.provider.waitForTransaction(txHash);
-      console.log('Transaction confirmed:', receipt);
-
-      // Get the deployed collection address from the event
-      const deployedAddress = await contractService.getDeployedCollections();
-      const newCollectionAddress = deployedAddress[deployedAddress.length - 1]; // Latest deployed
-
+      const newCollectionAddress = await contractService.createTripCollection(collectionData);
+      
       setDeployedContractAddress(newCollectionAddress);
       setIsDeployed(true);
 
       console.log('Collection deployed at:', newCollectionAddress);
 
-      // Set the base URI for the collection
-      const baseURI = `ipfs://${uploadedFiles.metadata.hash.replace('/metadata.json', '')}/`;
-      await contractService.setBaseURI(newCollectionAddress, baseURI);
-
-      console.log('Base URI set to:', baseURI);
+      // Get transaction hash for display
+      const deployedAddresses = await contractService.getDeployedCollections();
+      console.log('All deployed collections:', deployedAddresses);
 
     } catch (error) {
-      console.error('Deployment failed:', error);
-      setDeploymentError(error instanceof Error ? error.message : 'Deployment failed');
+      console.error('Contract deployment failed:', error);
+      setDeploymentError(error instanceof Error ? error.message : 'Contract deployment failed');
     } finally {
       setIsDeploying(false);
     }
-  }, [address, uploadedFiles.metadata, formData]);
+  }, [address, formData.name, formData.maxSupply, formData.mintPrice]);
+
+  // Step 2: Upload files to IPFS after contract is deployed
+  const uploadFilesToIPFS = useCallback(async () => {
+    if (!deployedContractAddress || !formData.audioFile || !formData.patternFile || !formData.imageFile) {
+      alert('Please deploy contract first and upload all required files');
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadProgress(0);
+
+    try {
+      // Step 1: Upload image to IPFS
+      setUploadProgress(20);
+      const imageResult = await uploadToIPFS(formData.imageFile);
+      setUploadedFiles(prev => ({ ...prev, image: imageResult }));
+      
+      // Step 2: Upload audio to IPFS
+      setUploadProgress(40);
+      const audioResult = await uploadToIPFS(formData.audioFile);
+      setUploadedFiles(prev => ({ ...prev, audio: audioResult }));
+      
+      // Step 3: Upload pattern JSON to IPFS
+      setUploadProgress(60);
+      const patternResult = await uploadToIPFS(formData.patternFile);
+      setUploadedFiles(prev => ({ ...prev, pattern: patternResult }));
+      
+      // Step 4: Generate and upload metadata
+      setUploadProgress(80);
+      const metadata: NFTMetadata = {
+        name: formData.name,
+        description: formData.description,
+        image: `ipfs://${imageResult.hash}`,
+        audio: `ipfs://${audioResult.hash}`,
+        streaming_data: `ipfs://${patternResult.hash}`,
+        attributes: [
+          { trait_type: 'Category', value: formData.category },
+          { trait_type: 'Intensity', value: formData.intensity },
+          { trait_type: 'Duration', value: `${formData.duration} min` },
+          { trait_type: 'Creator', value: address || 'Unknown' },
+          { trait_type: 'Edition', value: `1 of ${formData.maxSupply}` },
+          { trait_type: 'Audio Format', value: 'MP3' },
+          { trait_type: 'BLE Compatible', value: 'Yes' },
+        ],
+        external_url: `https://app.chromamind.tech/trips/${deployedContractAddress}`,
+      };
+
+      const metadataResult = await uploadJSONToIPFS(metadata, 'metadata.json');
+      setUploadedFiles(prev => ({ ...prev, metadata: metadataResult }));
+
+      setUploadProgress(100);
+      setDeployedMetadata(metadata);
+
+      // Step 5: Set the base URI for the collection
+      try {
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const signer = await provider.getSigner();
+        const contractService = createContractService(DEFAULT_CONTRACT_CONFIG, signer);
+
+        // Set the base URI to point to the IPFS directory containing metadata
+        const baseURI = `ipfs://${metadataResult.hash.replace('/metadata.json', '')}/`;
+        await contractService.setBaseURI(deployedContractAddress, baseURI);
+
+        console.log('Base URI set to:', baseURI);
+        alert('✅ Trip NFT deployment complete! Base URI has been set.');
+
+      } catch (error) {
+        console.error('Failed to set base URI:', error);
+        alert('⚠️ Files uploaded but failed to set base URI. You may need to set it manually.');
+      }
+
+    } catch (error) {
+      console.error('IPFS upload failed:', error);
+      alert(`IPFS upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsUploading(false);
+    }
+  }, [deployedContractAddress, formData, address]);
 
   // Test Pinata connection
   const [isTestingConnection, setIsTestingConnection] = useState(false);
@@ -185,133 +273,6 @@ export function TripUploader() {
       setIsTestingConnection(false);
     }
   }, []);
-
-  // Deploy NFT
-  const handleDeploy = useCallback(async () => {
-    if (!address || !formData.audioFile || !formData.patternFile) {
-      alert('Please fill all required fields and upload files');
-      return;
-    }
-
-    // Check if user is on Sepolia network
-    try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const network = await provider.getNetwork();
-      if (network.chainId !== BigInt(11155111)) { // Sepolia chain ID
-        alert('Please switch to Sepolia testnet to deploy your Trip NFT');
-        return;
-      }
-    } catch (error) {
-      console.error('Failed to check network:', error);
-      alert('Please ensure you are connected to Sepolia testnet');
-      return;
-    }
-
-    setIsUploading(true);
-    setUploadProgress(0);
-
-    try {
-      // Step 1: Upload audio to IPFS
-      setUploadProgress(20);
-      const audioResult = await uploadToIPFS(formData.audioFile);
-      setUploadedFiles(prev => ({ ...prev, audio: audioResult }));
-      
-      // Step 2: Upload pattern JSON to IPFS
-      setUploadProgress(40);
-      const patternResult = await uploadToIPFS(formData.patternFile);
-      setUploadedFiles(prev => ({ ...prev, pattern: patternResult }));
-      
-      // Step 3: Generate and upload metadata
-      setUploadProgress(60);
-      const metadata: NFTMetadata = {
-        name: formData.name,
-        description: formData.description,
-        image: `ipfs://Qm${Math.random().toString(36).substring(2, 15)}`, // Placeholder image
-        audio: `ipfs://${audioResult.hash}`,
-        streaming_data: `ipfs://${patternResult.hash}`,
-        attributes: [
-          { trait_type: 'Category', value: formData.category },
-          { trait_type: 'Intensity', value: formData.intensity },
-          { trait_type: 'Duration', value: `${formData.duration} min` },
-          { trait_type: 'Creator', value: address },
-          { trait_type: 'Edition', value: `1 of ${formData.maxSupply}` },
-          { trait_type: 'Audio Format', value: 'MP3' },
-          { trait_type: 'BLE Compatible', value: 'Yes' },
-        ],
-        external_url: `https://chromamind.app/trips/${formData.name.toLowerCase().replace(/\s+/g, '-')}`,
-      };
-
-      const metadataResult = await uploadJSONToIPFS(metadata, 'metadata.json');
-      setUploadedFiles(prev => ({ ...prev, metadata: metadataResult }));
-
-      setUploadProgress(80);
-      setDeployedMetadata(metadata);
-
-      // Step 4: Deploy to blockchain using TripFactory
-      setUploadProgress(90);
-      setIsDeploying(true);
-      
-      try {
-        // Get the signer from the connected wallet
-        const provider = new ethers.BrowserProvider(window.ethereum);
-        const signer = await provider.getSigner();
-
-        // Create contract service
-        const contractService = createContractService(DEFAULT_CONTRACT_CONFIG, signer);
-
-        // Prepare collection data
-        const priceInWei = ethers.parseEther(formData.mintPrice.toString());
-        const collectionData = {
-          name: formData.name,
-          symbol: 'TRIP',
-          maxSupply: formData.maxSupply,
-          price: priceInWei,
-          royaltyPercentage: 1000, // 10% royalty
-        };
-
-        console.log('Deploying collection with data:', collectionData);
-        console.log('Price in wei:', priceInWei.toString());
-        console.log('Price type:', typeof priceInWei);
-
-        // Deploy the collection
-        const txHash = await contractService.createTripCollection(collectionData);
-        setDeploymentTxHash(txHash);
-
-        console.log('Collection deployment transaction:', txHash);
-
-        // Wait for transaction confirmation
-        const receipt = await contractService.provider.waitForTransaction(txHash);
-        console.log('Transaction confirmed:', receipt);
-
-        // Get the deployed collection address from the event
-        const deployedAddress = await contractService.getDeployedCollections();
-        const newCollectionAddress = deployedAddress[deployedAddress.length - 1]; // Latest deployed
-
-        setDeployedContractAddress(newCollectionAddress);
-        setIsDeployed(true);
-
-        console.log('Collection deployed at:', newCollectionAddress);
-
-        // Set the base URI for the collection
-        const baseURI = `ipfs://${metadataResult.hash.replace('/metadata.json', '')}/`;
-        await contractService.setBaseURI(newCollectionAddress, baseURI);
-
-        console.log('Base URI set to:', baseURI);
-        setUploadProgress(100);
-
-      } catch (error) {
-        console.error('Blockchain deployment failed:', error);
-        setDeploymentError(error instanceof Error ? error.message : 'Blockchain deployment failed');
-        setIsDeploying(false);
-        return;
-      }
-    } catch (error) {
-      console.error('Deployment failed:', error);
-      alert(`Deployment failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
-      setIsUploading(false);
-    }
-  }, [address, formData]);
 
   if (!address) {
     return (
@@ -430,7 +391,29 @@ export function TripUploader() {
         <div className="space-y-4">
           <h3 className="text-lg font-medium text-slate-900">Upload Files</h3>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Image Upload */}
+            <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors">
+              <DocumentTextIcon className="mx-auto h-12 w-12 text-slate-400 mb-4" />
+              <label className="block text-sm font-medium text-slate-700 mb-2">Cover Image</label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => handleImageUpload(e.target.files?.[0] || null)}
+                className="hidden"
+                id="image-upload"
+              />
+              <label
+                htmlFor="image-upload"
+                className="cursor-pointer bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Choose Image
+              </label>
+              {formData.imageFile && (
+                <p className="mt-2 text-sm text-green-600">{formData.imageFile.name}</p>
+              )}
+            </div>
+
             {/* Audio Upload */}
             <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors">
               <MusicalNoteIcon className="mx-auto h-12 w-12 text-slate-400 mb-4" />
@@ -514,19 +497,14 @@ export function TripUploader() {
           </div>
         </div>
 
-        {/* Deploy Button */}
+        {/* Step 1: Deploy Contract Button */}
         <div className="pt-4">
           <button
-            onClick={handleDeploy}
-            disabled={isUploading || isDeploying || !formData.name || !formData.audioFile || !formData.patternFile}
-            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-4 px-6 rounded-lg font-semibold text-lg hover:from-blue-700 hover:to-purple-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+            onClick={deployTripContract}
+            disabled={isDeploying || !formData.name || !formData.maxSupply || !formData.mintPrice}
+            className="w-full bg-gradient-to-r from-green-600 to-blue-600 text-white py-4 px-6 rounded-lg font-semibold text-lg hover:from-green-700 hover:to-blue-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
           >
-            {isUploading ? (
-              <>
-                <CloudArrowUpIcon className="h-6 w-6 animate-bounce" />
-                Uploading to IPFS... {uploadProgress}%
-              </>
-            ) : isDeploying ? (
+            {isDeploying ? (
               <>
                 <RocketLaunchIcon className="h-6 w-6 animate-spin" />
                 Deploying Smart Contract...
@@ -534,28 +512,51 @@ export function TripUploader() {
             ) : (
               <>
                 <RocketLaunchIcon className="h-6 w-6" />
-                Deploy Trip NFT
+                Step 1: Deploy Trip NFT Contract
               </>
             )}
           </button>
         </div>
+
+        {/* Step 2: Upload Files Button (only show after contract is deployed) */}
+        {isDeployed && deployedContractAddress && (
+          <div className="pt-4">
+            <button
+              onClick={uploadFilesToIPFS}
+              disabled={isUploading || !formData.audioFile || !formData.patternFile || !formData.imageFile}
+              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-4 px-6 rounded-lg font-semibold text-lg hover:from-blue-700 hover:to-purple-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+            >
+              {isUploading ? (
+                <>
+                  <CloudArrowUpIcon className="h-6 w-6 animate-bounce" />
+                  Uploading to IPFS... {uploadProgress}%
+                </>
+              ) : (
+                <>
+                  <CloudArrowUpIcon className="h-6 w-6" />
+                  Step 2: Upload Files to IPFS
+                </>
+              )}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Deployment Status */}
-      {deployedMetadata && (
+      {deployedContractAddress && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-6">
           <h3 className="text-lg font-semibold text-green-900 mb-4">
-            {isDeployed ? '🎉 Trip NFT Deployed Successfully!' : '📁 Files Uploaded to IPFS'}
+            {isDeployed ? '🎉 Trip NFT Contract Deployed Successfully!' : '📋 Contract Deployment'}
           </h3>
           
           <div className="space-y-3">
             <div className="flex justify-between">
               <span className="text-green-700">Name:</span>
-              <span className="font-medium">{deployedMetadata.name}</span>
+              <span className="font-medium">{formData.name}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-green-700">Category:</span>
-              <span className="font-medium">{deployedMetadata.attributes.find(a => a.trait_type === 'Category')?.value}</span>
+              <span className="font-medium">{formData.category}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-green-700">Max Supply:</span>
@@ -565,66 +566,102 @@ export function TripUploader() {
               <span className="text-green-700">Mint Price:</span>
               <span className="font-medium">{formData.mintPrice} ETH</span>
             </div>
-          </div>
-
-          {/* IPFS Details */}
-          <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-            <h4 className="font-semibold text-blue-900 mb-2">📁 IPFS Files</h4>
-            <div className="space-y-2 text-sm">
-              {uploadedFiles.audio && (
-                <div className="flex justify-between">
-                  <span className="text-blue-700">Audio:</span>
-                  <a 
-                    href={uploadedFiles.audio.url} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:underline font-mono text-xs"
-                  >
-                    {uploadedFiles.audio.hash.substring(0, 12)}...
-                  </a>
-                </div>
-              )}
-              {uploadedFiles.pattern && (
-                <div className="flex justify-between">
-                  <span className="text-blue-700">Pattern Data:</span>
-                  <a 
-                    href={uploadedFiles.pattern.url} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:underline font-mono text-xs"
-                  >
-                    {uploadedFiles.pattern.hash.substring(0, 12)}...
-                  </a>
-                </div>
-              )}
-              {uploadedFiles.metadata && (
-                <div className="flex justify-between">
-                  <span className="text-blue-700">Metadata:</span>
-                  <a 
-                    href={uploadedFiles.metadata.url} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:underline font-mono text-xs"
-                  >
-                    {uploadedFiles.metadata.hash.substring(0, 12)}...
-                  </a>
-                </div>
-              )}
+            <div className="flex justify-between">
+              <span className="text-green-700">Contract Address:</span>
+              <span className="font-mono text-xs text-green-600">
+                {deployedContractAddress}
+              </span>
             </div>
           </div>
 
-          {/* Smart Contract Info */}
+          {/* Next Steps */}
+          <div className="mt-4 p-3 bg-blue-100 rounded-lg">
+            <p className="text-sm text-blue-800">
+              {isDeployed ? (
+                <><strong>Next:</strong> Upload your files to IPFS to complete the deployment!</>
+              ) : (
+                <><strong>Status:</strong> Contract deployment in progress...</>
+              )}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* IPFS Upload Results */}
+      {deployedMetadata && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+          <h3 className="text-lg font-semibold text-blue-900 mb-4">
+            📁 Files Uploaded to IPFS Successfully!
+          </h3>
+          
+          {/* IPFS Details */}
+          <div className="space-y-2 text-sm">
+            {uploadedFiles.image && (
+              <div className="flex justify-between">
+                <span className="text-blue-700">Cover Image:</span>
+                <a 
+                  href={uploadedFiles.image.url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline font-mono text-xs"
+                >
+                  {uploadedFiles.image.hash.substring(0, 12)}...
+                </a>
+              </div>
+            )}
+            {uploadedFiles.audio && (
+              <div className="flex justify-between">
+                <span className="text-blue-700">Audio:</span>
+                <a 
+                  href={uploadedFiles.audio.url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline font-mono text-xs"
+                >
+                  {uploadedFiles.audio.hash.substring(0, 12)}...
+                </a>
+              </div>
+            )}
+            {uploadedFiles.pattern && (
+              <div className="flex justify-between">
+                <span className="text-blue-700">Pattern Data:</span>
+                <a 
+                  href={uploadedFiles.pattern.url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline font-mono text-xs"
+                >
+                  {uploadedFiles.pattern.hash.substring(0, 12)}...
+                </a>
+              </div>
+            )}
+            {uploadedFiles.metadata && (
+              <div className="flex justify-between">
+                <span className="text-blue-700">Metadata:</span>
+                <a 
+                  href={uploadedFiles.metadata.url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline font-mono text-xs"
+                >
+                  {uploadedFiles.metadata.hash.substring(0, 12)}...
+                </a>
+              </div>
+            )}
+          </div>
+
+          {/* Base URI Info */}
           <div className="mt-4 p-3 bg-purple-50 rounded-lg">
-            <h4 className="font-semibold text-purple-900 mb-2">🔗 Smart Contract Data</h4>
+            <h4 className="font-semibold text-purple-900 mb-2">🔗 Base URI Set</h4>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between items-center">
-                <span className="text-purple-700">Metadata URI:</span>
+                <span className="text-purple-700">Base URI:</span>
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-xs text-purple-600">
-                    ipfs://{uploadedFiles.metadata?.hash}
+                    ipfs://{uploadedFiles.metadata?.hash.replace('/metadata.json', '')}/
                   </span>
                   <button
-                    onClick={() => copyToClipboard(`ipfs://${uploadedFiles.metadata?.hash}`)}
+                    onClick={() => copyToClipboard(`ipfs://${uploadedFiles.metadata?.hash.replace('/metadata.json', '')}/`)}
                     className="p-1 text-purple-600 hover:text-purple-800 transition-colors"
                     title="Copy to clipboard"
                   >
@@ -632,54 +669,9 @@ export function TripUploader() {
                   </button>
                 </div>
               </div>
-              <div className="flex justify-between">
-                <span className="text-purple-700">Base URI:</span>
-                <span className="font-mono text-xs text-purple-600">
-                  ipfs://{uploadedFiles.metadata?.hash.replace('/metadata.json', '')}/
-                </span>
-              </div>
             </div>
             <p className="text-xs text-purple-600 mt-2">
-              Use these URIs when deploying your smart contract
-            </p>
-          </div>
-
-          {/* Blockchain Deployment Info */}
-          {isDeployed && deployedContractAddress && (
-            <div className="mt-4 p-3 bg-blue-100 rounded-lg">
-              <h4 className="font-semibold text-blue-900 mb-2">🔗 Blockchain Deployment</h4>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-blue-700">Contract Address:</span>
-                  <span className="font-mono text-xs text-blue-600">
-                    {deployedContractAddress}
-                  </span>
-                </div>
-                {deploymentTxHash && (
-                  <div className="flex justify-between">
-                    <span className="text-blue-700">Transaction Hash:</span>
-                    <a 
-                      href={`https://sepolia.etherscan.io/tx/${deploymentTxHash}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline font-mono text-xs"
-                    >
-                      {deploymentTxHash.substring(0, 12)}...
-                    </a>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Next Steps */}
-          <div className="mt-4 p-3 bg-green-100 rounded-lg">
-            <p className="text-sm text-green-800">
-              {isDeployed ? (
-                <><strong>Success!</strong> Your Trip NFT is now deployed on the blockchain and ready for minting!</>
-              ) : (
-                <><strong>Next Steps:</strong> Your NFT is now live on IPFS! Deploy your smart contract with the metadata URI above.</>
-              )}
+              ✅ Your Trip NFT is now fully deployed and ready for minting!
             </p>
           </div>
         </div>

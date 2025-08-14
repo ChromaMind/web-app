@@ -253,23 +253,49 @@ export class ContractService {
         collection.symbol()
       ]);
 
-      // For now, return a mock collection object since we don't have IPFS metadata
-      // In a real implementation, you'd fetch this from IPFS using the baseURI
+      // Try to get collection metadata from IPFS if available
+      let description = 'A unique audio-visual experience collection';
+      let imageUrl = '/images/sunrise_energizer.png';
+      let audioCid = '';
+      let patternCid = '';
+      let metadataCid = '';
+
+      try {
+        // Check if there's a baseURI set for the collection
+        // This would typically point to IPFS metadata
+        const baseURI = await collection.baseURI?.() || '';
+        if (baseURI && baseURI !== '') {
+          // Try to fetch collection metadata from IPFS
+          const collectionMetadataUrl = `${baseURI}collection.json`;
+          const response = await fetch(collectionMetadataUrl);
+          if (response.ok) {
+            const ipfsMetadata = await response.json();
+            description = ipfsMetadata.description || description;
+            imageUrl = ipfsMetadata.image || imageUrl;
+            audioCid = ipfsMetadata.audio || audioCid;
+            patternCid = ipfsMetadata.pattern || patternCid;
+            metadataCid = ipfsMetadata.metadata || metadataCid;
+          }
+        }
+      } catch (ipfsError) {
+        console.warn('Failed to fetch collection IPFS metadata:', ipfsError);
+      }
+
       return {
         id: collectionAddress,
         contractAddress: collectionAddress,
         name: name,
         symbol: symbol,
-        description: 'A unique audio-visual experience collection',
+        description,
         creator: await collection.owner(),
         maxSupply: Number(maxSupply),
         currentSupply: Number(totalSupply),
         price: ethers.formatEther(price),
-        audioCid: '', // Would come from IPFS metadata
-        patternCid: '', // Would come from IPFS metadata
-        metadataCid: '', // Would come from IPFS metadata
+        audioCid,
+        patternCid,
+        metadataCid,
         createdAt: new Date().toISOString(),
-        imageUrl: '/images/sunrise_energizer.png',
+        imageUrl,
         isActive: true,
         royaltyPercentage: 1000, // 10% default
         tags: [],
@@ -278,6 +304,67 @@ export class ContractService {
     } catch (error) {
       console.error('Error getting collection:', error);
       throw new Error(`Failed to get collection: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Get a single token by ID
+   */
+  async getTokenById(collectionAddress: string, tokenId: string) {
+    try {
+      const collection = new ethers.Contract(
+        collectionAddress,
+        TRIP_NFT_ABI,
+        this.provider
+      );
+
+      // Get the actual token URI from the contract
+      const tokenURI = await collection.tokenURI(tokenId);
+      
+      // Fetch metadata from IPFS
+      let metadata = {
+        name: `${await collection.name()} #${tokenId}`,
+        description: 'A unique audio-visual experience NFT',
+        image: '/images/default-token.jpg',
+        audio: '',
+        pattern: '',
+        attributes: []
+      };
+
+      try {
+        if (tokenURI && tokenURI !== '') {
+          const response = await fetch(tokenURI);
+          if (response.ok) {
+            const ipfsMetadata = await response.json();
+            metadata = {
+              name: ipfsMetadata.name || metadata.name,
+              description: ipfsMetadata.description || metadata.description,
+              image: ipfsMetadata.image || metadata.image,
+              audio: ipfsMetadata.audio || metadata.audio,
+              pattern: ipfsMetadata.pattern || metadata.pattern,
+              attributes: ipfsMetadata.attributes || metadata.attributes
+            };
+          }
+        }
+      } catch (ipfsError) {
+        console.warn(`Failed to fetch IPFS metadata for token ${tokenId}:`, ipfsError);
+      }
+
+      const owner = await collection.ownerOf(tokenId);
+      
+      return {
+        id: `${collectionAddress}-${tokenId}`,
+        tokenId: tokenId.toString(),
+        collectionAddress,
+        owner,
+        creator: await collection.owner(),
+        metadata,
+        mintedAt: new Date().toISOString(),
+        isListed: false
+      };
+    } catch (error) {
+      console.error('Error getting token by ID:', error);
+      throw new Error(`Failed to get token by ID: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -301,20 +388,45 @@ export class ContractService {
           const tokenId = await collection.tokenByIndex(i);
           const owner = await collection.ownerOf(tokenId);
           
+          // Get the actual token URI from the contract
+          const tokenURI = await collection.tokenURI(tokenId);
+          
+          // Fetch metadata from IPFS
+          let metadata = {
+            name: `${await collection.name()} #${tokenId}`,
+            description: 'A unique audio-visual experience NFT',
+            image: '/images/default-token.jpg',
+            audio: '',
+            pattern: '',
+            attributes: []
+          };
+
+          try {
+            if (tokenURI && tokenURI !== '') {
+              const response = await fetch(tokenURI);
+              if (response.ok) {
+                const ipfsMetadata = await response.json();
+                metadata = {
+                  name: ipfsMetadata.name || metadata.name,
+                  description: ipfsMetadata.description || metadata.description,
+                  image: ipfsMetadata.image || metadata.image,
+                  audio: ipfsMetadata.audio || metadata.audio,
+                  pattern: ipfsMetadata.pattern || metadata.pattern,
+                  attributes: ipfsMetadata.attributes || metadata.attributes
+                };
+              }
+            }
+          } catch (ipfsError) {
+            console.warn(`Failed to fetch IPFS metadata for token ${tokenId}:`, ipfsError);
+          }
+          
           tokens.push({
             id: `${collectionAddress}-${tokenId}`,
             tokenId: tokenId.toString(),
             collectionAddress,
             owner,
             creator: await collection.owner(),
-            metadata: {
-              name: `${await collection.name()} #${tokenId}`,
-              description: 'A unique audio-visual experience NFT',
-              image: '/images/default-token.jpg',
-              audio: '', // Would come from IPFS metadata
-              pattern: '', // Would come from IPFS metadata
-              attributes: []
-            },
+            metadata,
             mintedAt: new Date().toISOString(),
             isListed: false
           });

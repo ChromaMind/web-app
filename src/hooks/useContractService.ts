@@ -49,6 +49,22 @@ export function useContractService() {
     return await service.getTokensForCollection(collectionAddress);
   }, [contractService]);
 
+  const getTokenById = useCallback(async (collectionAddress: string, tokenId: string) => {
+    if (!contractService) {
+      throw new Error('Wallet not connected');
+    }
+    const service = await contractService;
+    return await service.getTokenById(collectionAddress, tokenId);
+  }, [contractService]);
+
+  const getDeployedCollections = useCallback(async () => {
+    if (!contractService) {
+      throw new Error('Wallet not connected');
+    }
+    const service = await contractService;
+    return await service.getDeployedCollections();
+  }, [contractService]);
+
   return {
     // Service instance
     contractService,
@@ -60,6 +76,8 @@ export function useContractService() {
     // Collection methods
     getCollection,
     getTokensForCollection,
+    getTokenById,
+    getDeployedCollections,
     
     // NFT methods
     mintNFT,
