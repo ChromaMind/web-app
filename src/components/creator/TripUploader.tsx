@@ -31,6 +31,7 @@ interface DeployFormData {
   audioFile: File | null;
   patternFile: File | null;
   imageFile: File | null;
+  imageHash?: string; // IPFS hash of uploaded image
 }
 
 export function TripUploader() {
@@ -112,7 +113,40 @@ export function TripUploader() {
     }
   }, []);
 
-  // Step 1: Deploy the trip NFT contract first
+  // Step 1: Upload image to IPFS first
+  const uploadImageFirst = useCallback(async () => {
+    if (!formData.imageFile) {
+      alert('Please select an image file first');
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadProgress(20);
+
+    try {
+      // Upload image to IPFS
+      const imageResult = await uploadToIPFS(formData.imageFile);
+      setUploadedFiles(prev => ({ ...prev, image: imageResult }));
+      setUploadProgress(100);
+      
+      console.log('Image uploaded to IPFS:', imageResult);
+      alert(`✅ Image uploaded successfully! Hash: ${imageResult.hash}`);
+      
+      // Store the image hash for contract deployment
+      setFormData(prev => ({ 
+        ...prev, 
+        imageHash: `ipfs://${imageResult.hash}` 
+      }));
+
+    } catch (error) {
+      console.error('Image upload failed:', error);
+      alert(`Image upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsUploading(false);
+    }
+  }, [formData.imageFile]);
+
+  // Step 2: Deploy the trip NFT contract with the image hash
   const deployTripContract = useCallback(async () => {
     if (!address) {
       alert('Please connect wallet first');
@@ -124,12 +158,21 @@ export function TripUploader() {
       return;
     }
 
+    if (!formData.imageHash) {
+      alert('Please upload the image first to get the IPFS hash');
+      return;
+    }
+
     setIsDeploying(true);
     setDeploymentError('');
 
     try {
       // Check if user is on Sepolia network
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      if (!window.ethereum) {
+        alert('Please install MetaMask or another Web3 wallet');
+        return;
+      }
+      const provider = new ethers.BrowserProvider(window.ethereum as any);
       const network = await provider.getNetwork();
       if (network.chainId !== BigInt(11155111)) { // Sepolia chain ID
         alert('Please switch to Sepolia testnet to deploy your Trip NFT');
@@ -142,25 +185,49 @@ export function TripUploader() {
       // Create contract service
       const contractService = createContractService(DEFAULT_CONTRACT_CONFIG, signer);
 
-      // Prepare collection data
+      // Prepare collection data with correct parameters
       const priceInWei = ethers.parseEther(formData.mintPrice.toString());
-      const collectionData = {
+      const experienceFeeInWei = ethers.parseEther("0.25"); // 0.25 ETH experience fee
+      
+      console.log('Deploying collection with data:', {
+        name: formData.name,
+        symbol: 'TRIP',
+        maxSupply: formData.maxSupply,
+        mintPrice: priceInWei.toString(),
+        experienceFee: experienceFeeInWei.toString(),
+        creatorExperienceSplit: 50, // 50%
+        royaltyFee: 1000, // 10% in basis points
+        metadataName: formData.name,
+        metadataDescription: formData.description || "Audio-visual experience NFT",
+        metadataImageURL: formData.imageHash, // Use the actual uploaded image hash
+        metadataExternalURL: `https://app.chromamind.tech/trips/${formData.name.toLowerCase().replace(/\s+/g, '-')}`
+      });
+
+      // Deploy the collection with all required parameters in correct order
+      const newCollectionAddress = await contractService.createTripCollection({
         name: formData.name,
         symbol: 'TRIP',
         maxSupply: formData.maxSupply,
         price: priceInWei,
-        royaltyPercentage: 1000, // 10% royalty
-      };
-
-      console.log('Deploying collection with data:', collectionData);
-
-      // Deploy the collection
-      const newCollectionAddress = await contractService.createTripCollection(collectionData);
+        experienceFee: experienceFeeInWei,
+        creatorExperienceSplit: 50, // 50%
+        royaltyFee: 1000, // 10% in basis points
+        metadataName: formData.name,
+        metadataDescription: formData.description || "Audio-visual experience NFT",
+        metadataImageURL: formData.imageHash, // Use the actual uploaded image hash
+        metadataExternalURL: `https://app.chromamind.tech/trips/${formData.name.toLowerCase().replace(/\s+/g, '-')}`
+      });
       
-      setDeployedContractAddress(newCollectionAddress);
-      setIsDeployed(true);
-
-      console.log('Collection deployed at:', newCollectionAddress);
+      if (newCollectionAddress === 'DEPLOYMENT_SUCCESSFUL_BUT_ADDRESS_UNKNOWN') {
+        // Contract deployed but we couldn't get the address
+        alert('✅ Contract deployed successfully! However, we could not retrieve the contract address automatically. Please check your wallet for the transaction and manually verify the deployment.');
+        setIsDeployed(true);
+        setDeployedContractAddress('DEPLOYMENT_SUCCESSFUL');
+      } else {
+        setDeployedContractAddress(newCollectionAddress);
+        setIsDeployed(true);
+        console.log('Collection deployed at:', newCollectionAddress);
+      }
 
       // Get transaction hash for display
       const deployedAddresses = await contractService.getDeployedCollections();
@@ -172,12 +239,12 @@ export function TripUploader() {
     } finally {
       setIsDeploying(false);
     }
-  }, [address, formData.name, formData.maxSupply, formData.mintPrice]);
+  }, [address, formData.name, formData.maxSupply, formData.mintPrice, formData.description, formData.imageHash]);
 
-  // Step 2: Upload files to IPFS after contract is deployed
+  // Step 3: Upload remaining files to IPFS after contract is deployed
   const uploadFilesToIPFS = useCallback(async () => {
-    if (!deployedContractAddress || !formData.audioFile || !formData.patternFile || !formData.imageFile) {
-      alert('Please deploy contract first and upload all required files');
+    if (!deployedContractAddress || !formData.audioFile || !formData.patternFile) {
+      alert('Please deploy contract first and upload audio and pattern files');
       return;
     }
 
@@ -185,27 +252,22 @@ export function TripUploader() {
     setUploadProgress(0);
 
     try {
-      // Step 1: Upload image to IPFS
-      setUploadProgress(20);
-      const imageResult = await uploadToIPFS(formData.imageFile);
-      setUploadedFiles(prev => ({ ...prev, image: imageResult }));
-      
-      // Step 2: Upload audio to IPFS
-      setUploadProgress(40);
+      // Step 1: Upload audio to IPFS
+      setUploadProgress(33);
       const audioResult = await uploadToIPFS(formData.audioFile);
       setUploadedFiles(prev => ({ ...prev, audio: audioResult }));
       
-      // Step 3: Upload pattern JSON to IPFS
-      setUploadProgress(60);
+      // Step 2: Upload pattern JSON to IPFS
+      setUploadProgress(66);
       const patternResult = await uploadToIPFS(formData.patternFile);
       setUploadedFiles(prev => ({ ...prev, pattern: patternResult }));
       
-      // Step 4: Generate and upload metadata
-      setUploadProgress(80);
+      // Step 3: Generate and upload metadata
+      setUploadProgress(90);
       const metadata: NFTMetadata = {
         name: formData.name,
         description: formData.description,
-        image: `ipfs://${imageResult.hash}`,
+        image: formData.imageHash!, // Use the already uploaded image hash
         audio: `ipfs://${audioResult.hash}`,
         streaming_data: `ipfs://${patternResult.hash}`,
         attributes: [
@@ -226,9 +288,9 @@ export function TripUploader() {
       setUploadProgress(100);
       setDeployedMetadata(metadata);
 
-      // Step 5: Set the base URI for the collection
-      try {
-        const provider = new ethers.BrowserProvider(window.ethereum);
+              // Step 5: Set the base URI for the collection
+        try {
+          const provider = new ethers.BrowserProvider(window.ethereum as any);
         const signer = await provider.getSigner();
         const contractService = createContractService(DEFAULT_CONTRACT_CONFIG, signer);
 
@@ -460,6 +522,33 @@ export function TripUploader() {
           </div>
         </div>
 
+        {/* Image Upload Status */}
+        {formData.imageHash && (
+          <div className="border-t border-slate-200 pt-4">
+            <h3 className="text-lg font-medium text-green-900 mb-3">✅ Image Uploaded Successfully</h3>
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+              <div className="flex justify-between items-center">
+                <span className="text-green-700 text-sm">IPFS Hash:</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs text-green-600">
+                    {formData.imageHash}
+                  </span>
+                  <button
+                    onClick={() => copyToClipboard(formData.imageHash!)}
+                    className="p-1 text-green-600 hover:text-green-800 transition-colors"
+                    title="Copy to clipboard"
+                  >
+                    <ClipboardDocumentIcon className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+              <p className="text-xs text-green-600 mt-2">
+                Ready to deploy smart contract with this image
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Pinata Connection Test */}
         <div className="border-t border-slate-200 pt-4">
           <h3 className="text-lg font-medium text-slate-900 mb-3">IPFS Connection</h3>
@@ -497,29 +586,52 @@ export function TripUploader() {
           </div>
         </div>
 
-        {/* Step 1: Deploy Contract Button */}
+        {/* Step 1: Upload Image Button */}
         <div className="pt-4">
           <button
-            onClick={deployTripContract}
-            disabled={isDeploying || !formData.name || !formData.maxSupply || !formData.mintPrice}
-            className="w-full bg-gradient-to-r from-green-600 to-blue-600 text-white py-4 px-6 rounded-lg font-semibold text-lg hover:from-green-700 hover:to-blue-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+            onClick={uploadImageFirst}
+            disabled={isUploading || !formData.imageFile}
+            className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white py-4 px-6 rounded-lg font-semibold text-lg hover:from-purple-700 hover:to-pink-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
           >
-            {isDeploying ? (
+            {isUploading ? (
               <>
-                <RocketLaunchIcon className="h-6 w-6 animate-spin" />
-                Deploying Smart Contract...
+                <CloudArrowUpIcon className="h-6 w-6 animate-spin" />
+                Uploading Image to IPFS... {uploadProgress}%
               </>
             ) : (
               <>
-                <RocketLaunchIcon className="h-6 w-6" />
-                Step 1: Deploy Trip NFT Contract
+                <CloudArrowUpIcon className="h-6 w-6" />
+                Step 1: Upload Image to IPFS
               </>
             )}
           </button>
         </div>
 
-        {/* Step 2: Upload Files Button (only show after contract is deployed) */}
-        {isDeployed && deployedContractAddress && (
+        {/* Step 2: Deploy Contract Button (only show after image is uploaded) */}
+        {formData.imageHash && (
+          <div className="pt-4">
+            <button
+              onClick={deployTripContract}
+              disabled={isDeploying || !formData.name || !formData.maxSupply || !formData.mintPrice}
+              className="w-full bg-gradient-to-r from-green-600 to-blue-600 text-white py-4 px-6 rounded-lg font-semibold text-lg hover:from-green-700 hover:to-blue-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+            >
+              {isDeploying ? (
+                <>
+                  <RocketLaunchIcon className="h-6 w-6 animate-spin" />
+                  Deploying Smart Contract...
+                </>
+              ) : (
+                <>
+                  <RocketLaunchIcon className="h-6 w-6" />
+                  Step 2: Deploy Trip NFT Contract
+                </>
+              )}
+            </button>
+          </div>
+        )}
+
+        {/* Step 3: Upload Files Button (only show after contract is deployed) */}
+        {isDeployed && deployedContractAddress && deployedContractAddress !== 'DEPLOYMENT_SUCCESSFUL' && (
           <div className="pt-4">
             <button
               onClick={uploadFilesToIPFS}
@@ -529,14 +641,42 @@ export function TripUploader() {
               {isUploading ? (
                 <>
                   <CloudArrowUpIcon className="h-6 w-6 animate-bounce" />
-                  Uploading to IPFS... {uploadProgress}%
+                  Uploading Audio & Pattern... {uploadProgress}%
                 </>
               ) : (
                 <>
                   <CloudArrowUpIcon className="h-6 w-6" />
-                  Step 2: Upload Files to IPFS
+                  Step 3: Upload Audio & Pattern Files
                 </>
               )}
+            </button>
+          </div>
+        )}
+
+        {/* Manual Contract Address Retrieval */}
+        {isDeployed && deployedContractAddress === 'DEPLOYMENT_SUCCESSFUL' && (
+          <div className="pt-4">
+            <button
+              onClick={async () => {
+                try {
+                  const provider = new ethers.BrowserProvider(window.ethereum as any);
+                  const signer = await provider.getSigner();
+                  const contractService = createContractService(DEFAULT_CONTRACT_CONFIG, signer);
+                  const deployedCollections = await contractService.getDeployedCollections();
+                  if (deployedCollections && deployedCollections.length > 0) {
+                    const latestAddress = deployedCollections[deployedCollections.length - 1];
+                    setDeployedContractAddress(latestAddress);
+                    alert(`✅ Found deployed contract: ${latestAddress}`);
+                  } else {
+                    alert('No deployed collections found. Please check your wallet transaction history.');
+                  }
+                } catch (error) {
+                  alert(`Failed to retrieve contract address: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                }
+              }}
+              className="w-full bg-gradient-to-r from-yellow-600 to-orange-600 text-white py-4 px-6 rounded-lg font-semibold text-lg hover:from-yellow-700 hover:to-orange-700 transition-all duration-200 flex items-center justify-center gap-3"
+            >
+              🔍 Retrieve Deployed Contract Address
             </button>
           </div>
         )}
@@ -546,7 +686,11 @@ export function TripUploader() {
       {deployedContractAddress && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-6">
           <h3 className="text-lg font-semibold text-green-900 mb-4">
-            {isDeployed ? '🎉 Trip NFT Contract Deployed Successfully!' : '📋 Contract Deployment'}
+            {isDeployed ? (
+              deployedContractAddress === 'DEPLOYMENT_SUCCESSFUL' 
+                ? '✅ Contract Deployed (Address Retrieval Needed)' 
+                : '🎉 Trip NFT Contract Deployed Successfully!'
+            ) : '📋 Contract Deployment'}
           </h3>
           
           <div className="space-y-3">
@@ -569,7 +713,9 @@ export function TripUploader() {
             <div className="flex justify-between">
               <span className="text-green-700">Contract Address:</span>
               <span className="font-mono text-xs text-green-600">
-                {deployedContractAddress}
+                {deployedContractAddress === 'DEPLOYMENT_SUCCESSFUL' 
+                  ? 'Address retrieval needed - use button above' 
+                  : deployedContractAddress}
               </span>
             </div>
           </div>
@@ -596,19 +742,13 @@ export function TripUploader() {
           
           {/* IPFS Details */}
           <div className="space-y-2 text-sm">
-            {uploadedFiles.image && (
-              <div className="flex justify-between">
-                <span className="text-blue-700">Cover Image:</span>
-                <a 
-                  href={uploadedFiles.image.url} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-blue-600 hover:underline font-mono text-xs"
-                >
-                  {uploadedFiles.image.hash.substring(0, 12)}...
-                </a>
-              </div>
-            )}
+            {/* Image was already uploaded in Step 1 */}
+            <div className="flex justify-between">
+              <span className="text-blue-700">Cover Image:</span>
+              <span className="text-blue-600 font-mono text-xs">
+                {formData.imageHash?.replace('ipfs://', '').substring(0, 12)}... (Uploaded in Step 1)
+              </span>
+            </div>
             {uploadedFiles.audio && (
               <div className="flex justify-between">
                 <span className="text-blue-700">Audio:</span>
@@ -652,7 +792,7 @@ export function TripUploader() {
 
           {/* Base URI Info */}
           <div className="mt-4 p-3 bg-purple-50 rounded-lg">
-            <h4 className="font-semibold text-purple-900 mb-2">🔗 Base URI Set</h4>
+            <h4 className="font-semibold text-purple-900 mb-2">�� Base URI Set</h4>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between items-center">
                 <span className="text-purple-700">Base URI:</span>

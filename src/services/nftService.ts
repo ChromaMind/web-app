@@ -2,6 +2,7 @@ import { ethers } from 'ethers';
 import { createContractService, DEFAULT_CONTRACT_CONFIG } from './contractService';
 import { getFileFromIPFS, getPublicGatewayUrl } from './ipfsService';
 import type { Collection, Trip } from '@/types/nft';
+import { TRIP_NFT_ABI } from '@/config/contracts';
 
 
 // --- TYPES ---
@@ -253,26 +254,16 @@ export async function getTripByTokenId(
     // Use the working RPC URL
     const provider = new ethers.JsonRpcProvider('https://lb.drpc.org/sepolia/AplHGB2v9khYpYVNxc5za0FG8GqzeK8R8IrYIgaNGuYu');
     
-    // Basic ERC-721 ABI for tokenURI
-    const abi = [
-      {
-        "inputs": [{"type": "uint256", "name": "tokenId"}],
-        "name": "tokenURI",
-        "outputs": [{"type": "string"}],
-        "stateMutability": "view",
-        "type": "function"
-      }
-    ];
-    
-    const collection = new ethers.Contract(collectionAddress, abi, provider);
+    const collection = new ethers.Contract(collectionAddress, TRIP_NFT_ABI, provider);
     
     console.log('Fetching tokenURI for:', { collectionAddress, tokenId });
     
     // Get the tokenURI for the specific token
-    const tokenURI = "bafkreifo6lohildni5g3b2sk3zowbqtxxghuj5jre74jw46g3nyj7uersq"
+    const tokenURI = await collection.tokenURI(tokenId);
     
+    console.log('Raw tokenURI:', tokenURI);
     
-    if (!tokenURI ) {
+    if (!tokenURI) {
       throw new Error('Token URI not found');
     }
     
@@ -285,6 +276,7 @@ export async function getTripByTokenId(
       metadataUrl = `https://ivory-neat-unicorn-8.mypinata.cloud/ipfs/${tokenURI}`;
     }
     
+    console.log('Fetching metadata from:', metadataUrl);
     
     // Fetch the metadata from IPFS
     const response = await fetch(metadataUrl);
@@ -293,11 +285,14 @@ export async function getTripByTokenId(
     }
     
     const responseText = await response.text();
+    console.log('Raw response:', responseText.substring(0, 200) + '...');
     
     let metadata;
     try {
       metadata = JSON.parse(responseText);
     } catch (parseError) {
+      console.error('Failed to parse JSON:', parseError);
+      console.error('Response was:', responseText);
       throw new Error('Invalid JSON response from metadata URL');
     }
     
@@ -314,30 +309,31 @@ export async function getTripByTokenId(
     
     return {
       id: tokenId,
+      tokenId: tokenId,
+      collectionAddress: collectionAddress,
+      owner: metadata.owner || '0x0000000000000000000000000000000000000000',
+      creator: metadata.creator || 'Unknown',
+      description: metadata.description || '',
+      imageUrl: imageUrl,
+      name: metadata.name || `Trip ${tokenId}`,
+      price: metadata.price || '0',
+      royaltyPercentage: metadata.royaltyPercentage || 0,
+      mintedAt: metadata.mintedAt || new Date().toISOString(),
+      experienceFee: metadata.experienceFee || 0,
+      audioUrl: audioUrl,
+      steramingUrl: streamingDataUrl,
+      // Collection properties
       contractAddress: collectionAddress,
-        audioUrl: audioUrl,
-        steramingUrl: streamingDataUrl,
-        imageUrl: imageUrl,
-        name: metadata.name,
-        description: metadata.description,
-        creator: metadata.creator,
-        category: metadata.category,
-        experienceFee: metadata.experienceFee,
-        price: metadata.price,
-        royaltyPercentage: metadata.royaltyPercentage,
-        mintedAt: metadata.mintedAt,
-        tokenId: tokenId,
-        collectionAddress: collectionAddress,
-        owner: metadata.owner,
-        symbol: metadata.symbol,
-        maxSupply: metadata.maxSupply,
-        currentSupply: metadata.currentSupply,
-        audioCid: metadata.audioCid,
-        patternCid: metadata.patternCid,
-        metadataCid: metadata.metadataCid,
-        createdAt: metadata.createdAt,
-        isActive: metadata.isActive,
-        tags: metadata.tags,
+      symbol: metadata.symbol || 'TRIP',
+      maxSupply: metadata.maxSupply || 1000,
+      currentSupply: metadata.currentSupply || 0,
+      audioCid: metadata.audioCid || '',
+      patternCid: metadata.patternCid || '',
+      metadataCid: metadata.metadataCid || '',
+      createdAt: metadata.createdAt || new Date().toISOString(),
+      isActive: metadata.isActive !== undefined ? metadata.isActive : true,
+      tags: metadata.tags || [],
+      category: metadata.category || 'Focus'
     };
   } catch (error) {
     console.error('Failed to get trip by token ID:', error);

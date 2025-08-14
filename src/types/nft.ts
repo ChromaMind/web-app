@@ -204,10 +204,16 @@ export interface CreateCollectionRequest {
   symbol: string;
   maxSupply: number;
   price: bigint; // BigInt for wei amount
+  experienceFee: bigint; // BigInt for wei amount
+  creatorExperienceSplit: number; // In basis points (1000 = 10%)
   audioCid?: string;
   patternCid?: string;
   metadataCid?: string;
-  royaltyPercentage: number; // In basis points (1000 = 10%)
+  royaltyFee: number; // In basis points (1000 = 10%)
+  metadataName: string;
+  metadataDescription: string;
+  metadataImageURL: string;
+  metadataExternalURL: string;
 }
 
 export interface MintRequest {

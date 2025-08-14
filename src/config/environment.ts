@@ -3,7 +3,7 @@ export type Environment = 'local' | 'sepolia' | 'mainnet';
 
 // Get current environment from environment variable or default to local
 export const getCurrentEnvironment = (): Environment => {
-  return (process.env.NEXT_PUBLIC_ENVIRONMENT as Environment) || 'local';
+  return (process.env.NEXT_PUBLIC_ENVIRONMENT as Environment) || 'sepolia';
 };
 
 // Environment-specific configurations
@@ -19,8 +19,9 @@ export const ENVIRONMENT_CONFIG = {
       decimals: 18
     },
     contracts: {
-      tripFactory: '0xA0425Dbe5B9D5f3dE15206f7F908A209357C4aFA',
-      streamingLedger: '0x2abEA1c905c8547E4D7e2000257A77e52cB8A4cC'
+      tripFactory: '0xA3EF656C1BfeF416E5Ba93344e420c6B142CAcb4',
+      streamingLedger: '0x70d5B407fb6713e9A0847A903233342624291Feb',
+      tripNftTest: '0x23f5af18AD81e91Eb1570c0a390757a63Db25EDB'
     }
   },
   sepolia: {
@@ -34,8 +35,9 @@ export const ENVIRONMENT_CONFIG = {
       decimals: 18
     },
     contracts: {
-      tripFactory: '0xA0425Dbe5B9D5f3dE15206f7F908A209357C4aFA',
-      streamingLedger: '0x2abEA1c905c8547E4D7e2000257A77e52cB8A4cC'
+      tripFactory: '0xbDE876Fef492e9AAFb4f96B3F81C296e3Eb08ad0',
+      streamingLedger: '0x70d5B407fb6713e9A0847A903233342624291Feb',
+      tripNftTest: '0x23f5af18AD81e91Eb1570c0a390757a63Db25EDB'
     }
   },
   mainnet: {
@@ -50,7 +52,8 @@ export const ENVIRONMENT_CONFIG = {
     },
     contracts: {
       tripFactory: '', // Add mainnet addresses when deployed
-      streamingLedger: ''
+      streamingLedger: '',
+      tripNftTest: ''
     }
   }
 };

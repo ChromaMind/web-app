@@ -23,7 +23,11 @@ const TRIP_FACTORY_ABI = [
       { "type": "uint256", "name": "mintPrice" },
       { "type": "uint256", "name": "experienceFee" },
       { "type": "uint256", "name": "creatorExperienceSplit" },
-      { "type": "uint96", "name": "royaltyFee" }
+      { "type": "uint256", "name": "royaltyFee" },
+      { "type": "string", "name": "metadataName" },
+      { "type": "string", "name": "metadataDescription" },
+      { "type": "string", "name": "metadataImageURL" },
+      { "type": "string", "name": "metadataExternalURL" }
     ],
     "outputs": [
       { "type": "address", "name": "" }
@@ -48,7 +52,10 @@ const TRIP_FACTORY_ABI = [
       { "indexed": false, "type": "string", "name": "name" },
       { "indexed": false, "type": "string", "name": "symbol" },
       { "indexed": false, "type": "uint256", "name": "maxSupply" },
-      { "indexed": false, "type": "uint256", "name": "mintPrice" }
+      { "indexed": false, "type": "uint256", "name": "mintPrice" },
+      { "indexed": false, "type": "uint256", "name": "experienceFee" },
+      { "indexed": false, "type": "uint256", "name": "creatorExperienceSplit" },
+      { "indexed": false, "type": "uint256", "name": "royaltyFee" }
     ]
   }
 ];
@@ -118,6 +125,13 @@ const TRIP_NFT_ABI = [
     "name": "collectionCreator",
     "outputs": [{"type": "address"}],
     "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{"type": "string", "name": "newBaseURI"}],
+    "name": "setBaseURI",
+    "outputs": [],
+    "stateMutability": "nonpayable",
     "type": "function"
   },
 
@@ -285,30 +299,77 @@ export class ContractService {
         request.symbol,
         request.maxSupply,
         request.price, // Already parsed to BigInt
-        1000, // experienceFee - default value
-        500, // creatorExperienceSplit - default value (50%)
-        request.royaltyPercentage // This will be converted to uint96 by ethers
+        request.experienceFee,
+        request.creatorExperienceSplit,
+        request.royaltyFee,
+        request.metadataName,
+        request.metadataDescription,
+        request.metadataImageURL,
+        request.metadataExternalURL
       );
 
       const receipt = await tx.wait();
+      
+      console.log('Transaction receipt:', receipt);
+      console.log('Transaction logs:', receipt?.logs);
       
       // Find the CollectionCreated event
       const event = receipt?.logs.find((log: any) => {
         try {
           const parsed = factory.interface.parseLog(log);
+          console.log('Parsed log:', parsed);
           return parsed?.name === 'CollectionCreated';
-        } catch {
+        } catch (error) {
+          console.log('Failed to parse log:', error);
           return false;
         }
       });
 
-      console.log('event', event)
+      console.log('Found CollectionCreated event:', event);
       if (event) {
         const parsed = factory.interface.parseLog(event);
+        console.log('Parsed event args:', parsed?.args);
         return parsed?.args?.[0]; // newCollectionAddress
       }
 
-      throw new Error('Collection creation event not found');
+      // Fallback: try to get the deployed address from the transaction
+      console.log('Event not found, trying to get address from transaction...');
+      
+      // Method 1: Try to get from contract creation logs
+      if (receipt?.logs && receipt.logs.length > 0) {
+        for (const log of receipt.logs) {
+          try {
+            const parsed = factory.interface.parseLog(log);
+            console.log('Alternative log:', parsed);
+            if (parsed?.args && parsed.args.length > 0) {
+              return parsed.args[0]; // Return first argument which should be the address
+            }
+          } catch (error) {
+            console.log('Failed to parse alternative log:', error);
+          }
+        }
+      }
+      
+      // Method 2: Try to get from contract creation transaction
+      if (receipt?.to === this.config.tripFactoryAddress) {
+        console.log('This is a contract creation transaction, checking for contract address...');
+        // For contract creation, the new contract address might be in the transaction receipt
+        // or we can try to get it from the factory's deployed collections
+        try {
+          const deployedCollections = await factory.getDeployedCollections();
+          console.log('Deployed collections from factory:', deployedCollections);
+          if (deployedCollections && deployedCollections.length > 0) {
+            // Return the most recently deployed collection
+            return deployedCollections[deployedCollections.length - 1];
+          }
+        } catch (error) {
+          console.log('Failed to get deployed collections:', error);
+        }
+      }
+      
+      // Method 3: Return a placeholder and let the user know
+      console.warn('Could not parse contract address from transaction, but deployment was successful');
+      return 'DEPLOYMENT_SUCCESSFUL_BUT_ADDRESS_UNKNOWN';
     } catch (error) {
       console.error('Error creating collection:', error);
       throw new Error(`Failed to create collection: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -464,7 +525,7 @@ export class ContractService {
         createdAt: new Date().toISOString(),
         imageUrl: getPublicGatewayUrl(imageUrl),
         isActive: true,
-        royaltyPercentage: 1000, // 10% default
+        royaltyFee: 1000, // 10% default
         tags: [category, intensity, duration].filter(Boolean),
         category: category
       };
@@ -794,9 +855,13 @@ export class ContractService {
         request.symbol,
         request.maxSupply,
         request.price, // Already BigInt
-        1000, // experienceFee - default value
-        500, // creatorExperienceSplit - default value (50%)
-        request.royaltyPercentage // This will be converted to uint96
+        request.experienceFee,
+        request.creatorExperienceSplit,
+        request.royaltyFee,
+        request.metadataName,
+        request.metadataDescription,
+        request.metadataImageURL,
+        request.metadataExternalURL
       );
 
       return gasEstimate.toString();
@@ -857,7 +922,7 @@ export const LOCAL_CONFIG: ContractConfig = {
 };
 
 export const SEPOLIA_CONFIG: ContractConfig = {
-  tripFactoryAddress: '0xA0425Dbe5B9D5f3dE15206f7F908A209357C4aFA',
+  tripFactoryAddress: '0xA3EF656C1BfeF416E5Ba93344e420c6B142CAcb4',
   streamingLedgerAddress: '0x2abEA1c905c8547E4D7e2000257A77e52cB8A4cC',
   chainId: 11155111,
   rpcUrl: 'https://lb.drpc.org/sepolia/AplHGB2v9khYpYVNxc5za0FG8GqzeK8R8IrYIgaNGuYu'
