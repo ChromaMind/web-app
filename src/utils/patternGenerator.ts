@@ -48,8 +48,8 @@ export function generatePatternData(
       energy: 128 + Math.abs(Math.sin(timestamp * 0.5)) * 64,
     });
 
-    // Apply brightness
-    const ledData = pattern.map(value => Math.round(value * brightness));
+    // Apply brightness and convert Uint8Array to number[]
+    const ledData = Array.from(pattern).map(value => Math.round(value * brightness));
 
     frames.push({
       timestamp,
@@ -128,8 +128,8 @@ export function generateMultiPatternData(
       energy: 128 + Math.abs(Math.sin(timestamp * 0.5)) * 64,
     });
 
-    // Apply brightness
-    const ledData = pattern.map(value => Math.round(value * activePattern.brightness));
+    // Apply brightness and convert Uint8Array to number[]
+    const ledData = Array.from(pattern).map(value => Math.round(value * activePattern.brightness));
 
     frames.push({
       timestamp,

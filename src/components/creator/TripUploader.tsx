@@ -54,7 +54,8 @@ export function TripUploader() {
   const [isDeployed, setIsDeployed] = useState(false);
 
   // File upload handlers
-  const handleAudioUpload = useCallback((file: File) => {
+  const handleAudioUpload = useCallback((file: File | null) => {
+    if (!file) return;
     if (file.type !== 'audio/mpeg' && file.type !== 'audio/mp3') {
       alert('Please upload an MP3 file');
       return;
@@ -62,7 +63,8 @@ export function TripUploader() {
     setFormData(prev => ({ ...prev, audioFile: file }));
   }, []);
 
-  const handlePatternUpload = useCallback((file: File) => {
+  const handlePatternUpload = useCallback((file: File | null) => {
+    if (!file) return;
     if (file.type !== 'application/json') {
       alert('Please upload a JSON file');
       return;
@@ -111,7 +113,7 @@ export function TripUploader() {
       }
     } catch (error) {
       setConnectionStatus('error');
-      alert(`❌ Connection test failed: ${error.message}`);
+      alert(`❌ Connection test failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsTestingConnection(false);
     }
