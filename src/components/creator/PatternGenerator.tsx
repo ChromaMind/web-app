@@ -16,14 +16,15 @@ interface PatternConfig {
 export function PatternGenerator() {
   const [duration, setDuration] = useState(45); // minutes
   const [fps, setFps] = useState(60);
-  const [selectedPattern, setSelectedPattern] = useState<PatternId>('shift');
+  const [selectedPattern, setSelectedPattern] = useState<PatternId>('full-color');
   const [brightness, setBrightness] = useState(0.8);
   const [strobeHz, setStrobeHz] = useState(0);
   const [isMultiPattern, setIsMultiPattern] = useState(false);
   const [multiPatterns, setMultiPatterns] = useState<PatternConfig[]>([
-    { patternId: 'shift', startTime: 0, endTime: 15, brightness: 0.8, strobeHz: 0 },
-    { patternId: 'sparkle', startTime: 15, endTime: 30, brightness: 0.9, strobeHz: 5 },
-    { patternId: 'inward', startTime: 30, endTime: 45, brightness: 0.7, strobeHz: 0 },
+    { patternId: 'full-color', startTime: 0, endTime: 15, brightness: 0.8, strobeHz: 0 },
+    { patternId: 'full-white', startTime: 15, endTime: 30, brightness: 0.9, strobeHz: 5 },
+    { patternId: 'left-eye', startTime: 30, endTime: 45, brightness: 0.7, strobeHz: 0 },
+    { patternId: 'right-eye', startTime: 30, endTime: 45, brightness: 0.7, strobeHz: 0 },
   ]);
 
   const [generatedData, setGeneratedData] = useState<any>(null);
@@ -64,7 +65,7 @@ export function PatternGenerator() {
 
   const addMultiPattern = () => {
     setMultiPatterns(prev => [...prev, {
-      patternId: 'shift',
+      patternId: 'full-white',
       startTime: prev.length * 15,
       endTime: (prev.length + 1) * 15,
       brightness: 0.8,

@@ -70,7 +70,7 @@ export function SessionPlayerUI({ session }: Props) {
   }, [mode]);
 
   const [patternLabel, setPatternLabel] = useState<string>("AUTO");
-  const currentPatternRef = useRef<PatternId>("shift");
+  const currentPatternRef = useRef<PatternId>("full-color");
 
   // STROBE: Off / Auto / Manual
   const [strobeMode, setStrobeMode] = useState<StrobeMode>("off");
