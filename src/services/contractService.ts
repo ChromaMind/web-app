@@ -8,7 +8,7 @@ import type {
   EarningsClaimedEvent 
 } from '@/types/nft';
 
-// Smart Contract ABIs (actual contract ABIs)
+// Smart Contract ABIs (actual deployed contract ABIs)
 const TRIP_FACTORY_ABI = [
   'function createTripCollection(string name, string symbol, uint256 maxSupply, uint256 price, uint96 royaltyFee) external returns (address)',
   'event CollectionCreated(address indexed newCollectionAddress, address indexed creator, string name, string symbol, uint256 maxSupply, uint256 price)',
@@ -19,19 +19,66 @@ const TRIP_FACTORY_ABI = [
 ];
 
 const TRIP_NFT_ABI = [
-  'function mint(address to, uint256 quantity) external payable',
-  'function setBaseURI(string baseURI) external',
-  'function ownerOf(uint256 tokenId) external view returns (address)',
+  // Constructor parameters
+  'constructor(string name, string symbol, uint256 maxSupply, uint256 initialMintPrice, address initialOwner, address royaltyRecipient, uint96 royaltyPercentage)',
+  
+  // Core functions
+  'function mint(uint256 quantity) external payable',
+  'function setBaseURI(string newBaseURI) external',
+  'function setMintPrice(uint256 newPrice) external',
+  'function withdraw() external',
+  
+  // View functions
+  'function name() external view returns (string)',
+  'function symbol() external view returns (string)',
   'function totalSupply() external view returns (uint256)',
-  'function maxSupply() external view returns (uint256)',
-  'function price() external view returns (uint256)',
-  'event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)'
+  'function MAX_SUPPLY() external view returns (uint256)',
+  'function mintPrice() external view returns (uint256)',
+  'function ownerOf(uint256 tokenId) external view returns (address)',
+  'function balanceOf(address owner) external view returns (uint256)',
+  'function tokenURI(uint256 tokenId) external view returns (string)',
+  'function owner() external view returns (address)',
+  
+  // ERC-721 functions
+  'function approve(address to, uint256 tokenId) external',
+  'function getApproved(uint256 tokenId) external view returns (address)',
+  'function setApprovalForAll(address operator, bool approved) external',
+  'function isApprovedForAll(address owner, address operator) external view returns (bool)',
+  'function transferFrom(address from, address to, uint256 tokenId) external',
+  'function safeTransferFrom(address from, address to, uint256 tokenId) external',
+  'function safeTransferFrom(address from, address to, uint256 tokenId, bytes data) external',
+  'function tokenOfOwnerByIndex(address owner, uint256 index) external view returns (uint256)',
+  'function tokenByIndex(uint256 index) external view returns (uint256)',
+  
+  // ERC-2981 royalty functions
+  'function royaltyInfo(uint256 tokenId, uint256 salePrice) external view returns (address receiver, uint256 royaltyAmount)',
+  'function supportsInterface(bytes4 interfaceId) external view returns (bool)',
+  
+  // Events
+  'event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)',
+  'event Approval(address indexed owner, address indexed approved, uint256 indexed tokenId)',
+  'event ApprovalForAll(address indexed owner, address indexed operator, bool approved)',
+  'event BaseURIUpdated(string newBaseURI)',
+  'event MintPriceUpdated(uint256 newPrice)'
 ];
 
 const STREAMING_LEDGER_ABI = [
+  // Constructor
+  'constructor(address initialOwner, address initialTrustedSigner)',
+  
+  // Core functions
   'function deposit() external payable',
-  'function withdraw(uint256 amount, bytes memory signature) external',
-  'function getBalance(address user) external view returns (uint256)',
+  'function withdraw(uint256 amount, bytes signature) external',
+  'function setTrustedSigner(address newSigner) external',
+  'function emergencyWithdraw() external',
+  
+  // View functions
+  'function getContractBalance() external view returns (uint256)',
+  'function getUserCredit(address user) external view returns (uint256)',
+  'function owner() external view returns (address)',
+  'function trustedSigner() external view returns (address)',
+  
+  // Events
   'event Deposited(address indexed user, uint256 amount)',
   'event Withdrawn(address indexed user, uint256 amount)'
 ];
@@ -120,11 +167,11 @@ export class ContractService {
         this.signer
       );
 
-      // Get the price for this collection
-      const price = await collection.price();
+      // Get the mint price for this collection
+      const price = await collection.mintPrice();
       const totalCost = price * BigInt(request.quantity);
 
-      const tx = await collection.mint(request.recipient, request.quantity, {
+      const tx = await collection.mint(request.quantity, {
         value: totalCost
       });
 
@@ -168,8 +215,8 @@ export class ContractService {
 
       const [totalSupply, maxSupply, price] = await Promise.all([
         collection.totalSupply(),
-        collection.maxSupply(),
-        collection.price()
+        collection.MAX_SUPPLY(),
+        collection.mintPrice()
       ]);
 
       return {
@@ -296,7 +343,7 @@ export class ContractService {
         this.provider
       );
 
-      const balance = await ledger.getBalance(userAddress);
+      const balance = await ledger.getUserCredit(userAddress);
       return ethers.formatEther(balance);
     } catch (error) {
       console.error('Error getting credit balance:', error);
@@ -434,7 +481,6 @@ export class ContractService {
       const totalCost = price * BigInt(request.quantity);
 
       const gasEstimate = await collection.mint.estimateGas(
-        request.recipient,
         request.quantity,
         { value: totalCost }
       );
@@ -452,10 +498,10 @@ export function createContractService(config: ContractConfig, signer: ethers.Sig
   return new ContractService(config, signer);
 }
 
-// Default configuration (replace with actual values)
+// Default configuration for local Anvil network
 export const DEFAULT_CONTRACT_CONFIG: ContractConfig = {
-  tripFactoryAddress: '0x0000000000000000000000000000000000000000', // Replace with actual address
-  streamingLedgerAddress: '0x0000000000000000000000000000000000000000', // Replace with actual address
-  chainId: 80001, // Mumbai testnet
-  rpcUrl: 'https://rpc-mumbai.maticvigil.com' // Replace with actual RPC URL
+  tripFactoryAddress: '0x0DCd1Bf9A1b36cE34237eEaFef220932846BCD82',
+  streamingLedgerAddress: '0x9A676e781A523b5d0C0e43731313A708CB607508',
+  chainId: 31337, // Local Anvil network
+  rpcUrl: 'http://127.0.0.1:8545'
 };
