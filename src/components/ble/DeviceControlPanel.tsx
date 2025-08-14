@@ -14,16 +14,18 @@ import {
     PATTERN_LABELS,
     type PatternId,
 } from "@/lib/ledPatterns";
+import { useWakeLock } from "@/hooks/useWakeLock";
 
 type PatternSelection = "auto" | PatternId;
 
 export function DeviceControlPanel() {
+    useWakeLock(true);
     const hasMounted = useHasMounted();
     const { isConnected, device, sendData, sendStrobe } = useBLE();
 
     // UI state (kept)
-    const [selectedPattern, setSelectedPattern] = useState<PatternSelection>("shift");
-    const [patternBrightness, setPatternBrightness] = useState<number>(0.8);
+    const [selectedPattern, setSelectedPattern] = useState<PatternSelection>("auto");
+    const [patternBrightness, setPatternBrightness] = useState<number>(0.3);
     const [currentStrobeHz, setCurrentStrobeHz] = useState<number>(20);
 
     // Preview state (UI only; throttle updates)
@@ -32,16 +34,14 @@ export function DeviceControlPanel() {
     );
     const [fftBars, setFftBars] = useState<Uint8Array | null>(null);
 
-    // Player (mirror currentTime to a ref so effect deps don't churn)
+    // Player
     const { isPlaying, currentTime, analyser, ctx } = usePlayer();
     const timeRef = useRef(0);
-    useEffect(() => {
-        timeRef.current = currentTime || 0;
-    }, [currentTime]);
+    useEffect(() => { timeRef.current = currentTime || 0; }, [currentTime]);
 
     // RAF + guards
     const rafRef = useRef<number | null>(null);
-    const lastFrameMsRef = useRef(0);
+    const lastStreamMsRef = useRef(0);
     const lastUIUpdateMsRef = useRef(0);
     const lastFFTUpdateMsRef = useRef(0);
     const lastSentStrobeRef = useRef(-1);
@@ -52,39 +52,76 @@ export function DeviceControlPanel() {
     const send2DRef = useRef<number[][]>(Array.from({ length: ledCount }, () => [0, 0, 0]));
     const binsRef = useRef<Uint8Array | null>(null);
 
+    // ---------- AUTO switching (debounced + ref-committed) ----------
+    const autoCommittedRef = useRef<PatternId>("shift"); // what we actually render
+    const [autoPatternId, setAutoPatternId] = useState<PatternId>("shift"); // mirror for UI/debug
+    const lastChangeTimeRef = useRef(0); // seconds
+    const lastCandidateRef = useRef<PatternId | null>(null);
+    const candidateStableFramesRef = useRef(0);
+
+    // knobs
+    const REQUIRED_STABLE_FRAMES = 6;  // ~240ms at ~25fps
+    const MIN_HOLD_SECONDS = 2.0;      // hold committed pattern this long
+    const FORCE_SWITCH_AFTER = 8.0;    // hard rotate if nothing changed
+
+    // Seed AUTO when selected so it doesn't feel stuck at "shift"
     useEffect(() => {
-        if (!isPlaying){
+        if (selectedPattern === "auto" && analyser) {
+            const t = timeRef.current;
+            const bins = new Uint8Array(analyser.frequencyBinCount);
+            analyser.getByteFrequencyData(bins); // ✅ correct typing
+
+            const n = bins.length;
+            const bEnd = Math.max(2, Math.floor(n * 0.12));
+            const mEnd = Math.max(bEnd + 1, Math.floor(n * 0.45));
+            let sumB = 0, sumAll = 0;
+            for (let i = 0; i < bEnd; i++) sumB += bins[i];
+            for (let i = 0; i < n; i++)    sumAll += bins[i];
+
+            const bass = sumB / bEnd;
+            const energy = sumAll / n;
+            const candidate = choosePatternIdAuto(bass, energy, t);
+
+            autoCommittedRef.current = candidate;
+            setAutoPatternId(candidate);
+            lastCandidateRef.current = candidate;
+            candidateStableFramesRef.current = REQUIRED_STABLE_FRAMES; // already stable
+            lastChangeTimeRef.current = ctx?.currentTime ?? t;
+        }
+    }, [selectedPattern, analyser, ctx]);
+
+    useEffect(() => {
+        // turn LEDs off when player not running
+        if (!isPlaying) {
             const off = Array.from({ length: ledCount }, () => [0, 0, 0] as [number, number, number]);
-            void sendData(off);
+            try { sendData(off); } catch {}
         }
         if (!isConnected || !isPlaying || !analyser) return;
+
+        analyser.fftSize = 128; // match SessionPlayerUI
 
         // init FFT buffer once
         if (!binsRef.current || binsRef.current.length !== analyser.frequencyBinCount) {
             binsRef.current = new Uint8Array(analyser.frequencyBinCount);
         }
 
-        // resume AudioContext if needed
-        if (ctx && ctx.state === "suspended") {
-            ctx.resume().catch(() => {});
-        }
+        // resume AudioContext if needed (mobile)
+        if (ctx && ctx.state === "suspended") { ctx.resume().catch(() => {}); }
 
         const bins = binsRef.current!;
-        const uiFpsMs = 66;   // ~15 fps for UI preview
-        const fftFpsMs = 100; // ~10 fps for bars
-        const streamFpsMs = 33; // ~30 fps for BLE/device
+        const uiFpsMs = 66;     // ~15 fps for preview
+        const fftFpsMs = 100;   // ~10 fps for bars
+        const streamFpsMs = 40; // ~25 fps for BLE friendliness
 
         const tick = () => {
             rafRef.current = requestAnimationFrame(tick);
             const now = performance.now();
+            if (now - lastStreamMsRef.current < streamFpsMs) return;
+            lastStreamMsRef.current = now;
 
-            // stream at ~30fps
-            if (now - lastFrameMsRef.current < streamFpsMs) return;
-            lastFrameMsRef.current = now;
-
-            // ---- FFT read
-            // analyser.getByteFrequencyData(bins);
-
+            // FFT read
+            const bins = new Uint8Array(analyser.frequencyBinCount);
+            analyser.getByteFrequencyData(bins);
             // bands
             const n = bins.length;
             const bEnd = Math.max(2, Math.floor(n * 0.12));
@@ -93,7 +130,7 @@ export function DeviceControlPanel() {
             for (let i = 0; i < bEnd; i++) sumB += bins[i];
             for (let i = bEnd; i < mEnd; i++) sumM += bins[i];
             for (let i = mEnd; i < n; i++) sumT += bins[i];
-            for (let i = 0; i < n; i++) sumAll += bins[i];
+            for (let i = 0; i < n; i++)    sumAll += bins[i];
 
             const bass = sumB / bEnd;
             const mid = sumM / (mEnd - bEnd);
@@ -104,19 +141,45 @@ export function DeviceControlPanel() {
             const desiredHz = currentStrobeHz > 0 ? currentStrobeHz : 0;
             if (desiredHz !== lastSentStrobeRef.current) {
                 lastSentStrobeRef.current = desiredHz;
-                // fire-and-forget
                 try { sendStrobe(desiredHz); } catch {}
             }
 
-            // choose pattern (no fades)
+            // Decide final pattern
             const t = timeRef.current;
-            const patternId: PatternId =
-                selectedPattern === "auto" ? choosePatternIdAuto(bass, energy, t) : selectedPattern;
+            let finalPatternId: PatternId;
+
+            if (selectedPattern === "auto") {
+                const candidate = choosePatternIdAuto(bass, energy, t);
+
+                // debounce/hold logic
+                if (candidate !== lastCandidateRef.current) {
+                    lastCandidateRef.current = candidate;
+                    candidateStableFramesRef.current = 1;
+                } else {
+                    candidateStableFramesRef.current++;
+                }
+
+                const nowSec = (ctx?.currentTime ?? t) || 0;
+                const timeSinceChange = nowSec - lastChangeTimeRef.current;
+                const canSwitch =
+                    (candidateStableFramesRef.current >= REQUIRED_STABLE_FRAMES &&
+                        timeSinceChange >= MIN_HOLD_SECONDS) ||
+                    timeSinceChange >= FORCE_SWITCH_AFTER; // fallback so AUTO never stalls
+
+                if (candidate !== autoCommittedRef.current && canSwitch) {
+                    autoCommittedRef.current = candidate; // immediate commit for render
+                    setAutoPatternId(candidate);          // mirror to state for visibility
+                    lastChangeTimeRef.current = nowSec;
+                }
+
+                finalPatternId = autoCommittedRef.current; // ALWAYS render from ref (no lag)
+            } else {
+                finalPatternId = selectedPattern;
+            }
 
             // render (into outFrameRef) and scale
             const out = outFrameRef.current;
-            const raw = renderPattern(patternId, { rows, cols, t, bass, mid, treble, energy });
-            // scale in-place to avoid another buffer
+            const raw = renderPattern(finalPatternId, { rows, cols, t, bass, mid, treble, energy });
             for (let i = 0; i < out.length; i++) {
                 out[i] = Math.round(raw[i] * patternBrightness);
             }
@@ -133,18 +196,14 @@ export function DeviceControlPanel() {
             // send to device
             try { sendData(twoD); } catch {}
 
-            // throttle React state updates for smooth UI
+            // throttled UI updates
             if (now - lastUIUpdateMsRef.current >= uiFpsMs) {
                 lastUIUpdateMsRef.current = now;
-                // shallow-copy for React state (keeps same inner arrays to avoid churn)
                 setCurrentPattern(twoD);
             }
             if (now - lastFFTUpdateMsRef.current >= fftFpsMs) {
                 lastFFTUpdateMsRef.current = now;
-                setFftBars(prev => {
-                    // reuse length; create a new Uint8Array only when necessary
-                    return new Uint8Array(bins);
-                });
+                setFftBars(new Uint8Array(bins));
             }
         };
 
@@ -159,12 +218,12 @@ export function DeviceControlPanel() {
         isPlaying,
         analyser,
         ctx,
-        selectedPattern,        // keep settings deps
+        selectedPattern,
         patternBrightness,
         currentStrobeHz,
         sendData,
         sendStrobe,
-    ]); // ⚠️ no currentTime here
+    ]);
 
     if (!hasMounted) {
         return (
@@ -182,22 +241,15 @@ export function DeviceControlPanel() {
         <div className="bg-slate-50 rounded-lg p-4">
             <h3 className="text-sm font-semibold text-slate-900 mb-4">Device Connection</h3>
 
-            {/* Connection Status */}
             <div className="flex items-center gap-3 mb-4">
                 <DeviceStatusIndicator />
-                {device && (
-                    <span className="text-xs text-slate-600">
-            {device.name || "Unnamed Device"}
-          </span>
-                )}
+                {device && <span className="text-xs text-slate-600">{device.name || "Unnamed Device"}</span>}
             </div>
 
-            {/* Connection Controls */}
             <div className="mb-4">
                 <DeviceConnectButton />
             </div>
 
-            {/* LED Preview - Show when connected */}
             {isConnected && (
                 <div className="mb-4 pt-3 border-t border-slate-200">
                     <label className="block text-xs text-slate-600 mb-2">LED Pattern Preview</label>
@@ -205,7 +257,6 @@ export function DeviceControlPanel() {
                         <ChromaPreview
                             rows={2}
                             cols={8}
-                            // build once; we already reuse inner arrays; Preview wants a flat Uint8Array
                             frame={new Uint8Array(outFrameRef.current)}
                             strobeHz={currentStrobeHz}
                             cellSize={20}
@@ -216,13 +267,10 @@ export function DeviceControlPanel() {
                 </div>
             )}
 
-            {/* Device Controls - Only show when connected */}
             {isConnected && (
                 <div className="space-y-3 pt-3 border-t border-slate-200">
                     <div>
                         <label className="block text-xs text-slate-600 mb-2">LED Pattern Control</label>
-
-                        {/* Pattern Selection (added AUTO option, same styling) */}
                         <div className="mb-3">
                             <label className="block text-xs text-slate-600 mb-1">Pattern Type</label>
                             <select
@@ -239,7 +287,6 @@ export function DeviceControlPanel() {
                             </select>
                         </div>
 
-                        {/* Brightness Control (same UI) */}
                         <div className="mb-3">
                             <label className="block text-xs text-slate-600 mb-1">Brightness Level</label>
                             <input
@@ -283,7 +330,6 @@ export function DeviceControlPanel() {
                         </div>
                     </div>
 
-                    {/* Live FFT bars (same look; UI-throttled) */}
                     {fftBars && (
                         <div className="mt-3 pt-3 border-t border-slate-200">
                             <label className="block text-xs text-slate-600 mb-2">Live FFT</label>
@@ -291,10 +337,7 @@ export function DeviceControlPanel() {
                                 {Array.from(fftBars).map((v, i) => (
                                     <div
                                         key={i}
-                                        style={{
-                                            height: `${(v / 255) * 100}%`,
-                                            width: `${100 / fftBars.length}%`,
-                                        }}
+                                        style={{ height: `${(v / 255) * 100}%`, width: `${100 / fftBars.length}%` }}
                                         className="bg-blue-500 rounded-sm"
                                         title={`${i}: ${v}`}
                                     />
@@ -303,15 +346,11 @@ export function DeviceControlPanel() {
                         </div>
                     )}
 
-                    {/* Status Info */}
                     <div className="mt-3 pt-3 border-t border-slate-200">
                         <div className="text-xs text-slate-500 text-center">
                             {isPlaying ? (
                                 <div className="text-green-600">
-                                    🎵 Synced with main player • Pattern:{" "}
-                                    {selectedPattern === "auto"
-                                        ? "AUTO"
-                                        : (PATTERN_LABELS[selectedPattern] ?? selectedPattern)}
+                                    🎵 Synced with main player • Pattern: {selectedPattern === "auto" ? "AUTO" : (PATTERN_LABELS[selectedPattern] ?? selectedPattern)}
                                 </div>
                             ) : (
                                 <div className="text-slate-400">⏸️ Waiting for main player to start</div>

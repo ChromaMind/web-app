@@ -4,7 +4,7 @@ export type FrameRGB = Uint8Array;
 export type PatternId =
     | "arrow"
     | "double-arrow"
-    | "expand"
+    // | "expandexpand"
     | "top"
     | "bottom"
     | "top-bottom"
@@ -162,7 +162,7 @@ const pInward = ({ rows, cols, t, bass, mid, treble }: PatternContext) => {
 export const PATTERNS: Record<PatternId, (c: PatternContext) => FrameRGB> = {
     arrow: pArrow,
     "double-arrow": pDoubleArrow,
-    expand: pExpand,
+    // expand: pExpand,
     top: pTop,
     bottom: pBottom,
     "top-bottom": pTopBottom,
@@ -176,7 +176,7 @@ export const PATTERNS: Record<PatternId, (c: PatternContext) => FrameRGB> = {
 export const ALL_PATTERN_IDS: PatternId[] = [
     "arrow",
     "double-arrow",
-    "expand",
+    // "expand",
     "top",
     "bottom",
     "top-bottom",
@@ -190,7 +190,7 @@ export const ALL_PATTERN_IDS: PatternId[] = [
 export const PATTERN_LABELS: Record<PatternId, string> = {
     arrow: "↔ Arrow",
     "double-arrow": "⇄ Double Arrow",
-    expand: "Expanding",
+    // expand: "Expanding",
     top: "Top Row",
     bottom: "Bottom Row",
     "top-bottom": "Top + Bottom",
@@ -205,8 +205,8 @@ export const renderPattern = (id: PatternId, ctx: PatternContext) =>
 
 // Auto-switching: swap patterns faster and react to bass/energy
 export function choosePatternIdAuto(bass: number, energy: number, t: number): PatternId {
-    if (energy < 25) return "white";
-    if (bass > 180)  return (Math.floor(t * 1.5) % 2 ? "expand" : "inward");
-    if (energy > 160) return "sparkle";
-    return ALL_PATTERN_IDS[Math.floor((t * 0.5) % ALL_PATTERN_IDS.length)];
+    // if (energy < 180) return "white";
+    // if (bass > 180)  return (Math.floor(t * 1.5) % 2 ? "expand" : "inward");
+    // if (energy > 160) return "sparkle";
+    return ALL_PATTERN_IDS[Math.floor((t * 1.5) % ALL_PATTERN_IDS.length)];
 }
