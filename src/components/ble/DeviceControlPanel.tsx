@@ -28,7 +28,7 @@ export function DeviceControlPanel() {
     // UI state
     const [selectedPattern, setSelectedPattern] = useState<PatternSelection>("auto");
     const [patternBrightness, setPatternBrightness] = useState<number>(0.3); // device-only dim
-    const [currentStrobeHz, setCurrentStrobeHz] = useState<number>(20);
+    const [currentStrobeHz, setCurrentStrobeHz] = useState<number>(0);
 
     // FFT bars for UI
     const [fftBars, setFftBars] = useState<Uint8Array | null>(null);
@@ -51,206 +51,17 @@ export function DeviceControlPanel() {
     const send2DRef = useRef<number[][]>(Array.from({ length: ledCount }, () => [0, 0, 0]));
     const binsRef = useRef<Uint8Array | null>(null);
 
-    // ========== ENHANCED BEAT DETECTION ==========
+    // Enhanced beat detection state
+    const [autoPatternId, setAutoPatternId] = useState<PatternId>("left-eye");
 
-    // Beat tracking history
+    // Multiple beat detection methods
+    const lastBeatTimeRef = useRef(0);
+    const lastPatternChangeRef = useRef(0);
     const bassHistoryRef = useRef<number[]>([]);
     const energyHistoryRef = useRef<number[]>([]);
-    const trebleHistoryRef = useRef<number[]>([]);
-    const HISTORY_LENGTH = 8; // frames to track
-
-    // Beat detection thresholds
-    const lastBeatTimeRef = useRef(0);
-    const lastEnergySpikeRef = useRef(0);
-    const lastFreqChangeRef = useRef(0);
-
-    // Pattern forcing for beat events
-    const forcedPatternRef = useRef<PatternId | null>(null);
-    const forcedPatternEndRef = useRef(0);
-
-    // ---------- AUTO switching (enhanced beat-reactive) ----------
-    const autoCommittedRef = useRef<PatternId>("shift"); // what we actually render each frame
-    const [autoPatternId, setAutoPatternId] = useState<PatternId>("shift"); // mirror for UI/debug
-    const lastChangeTimeRef = useRef(0); // seconds
-    const lastCandidateRef = useRef<PatternId | null>(null);
-    const candidateStableFramesRef = useRef(0);
-
-    // Beat-reactive knobs
-    const REQUIRED_STABLE_FRAMES = 3;  // Faster switching for beats
-    const MIN_HOLD_SECONDS = 0.8;      // Shorter hold for beat reactivity
-    const FORCE_SWITCH_AFTER = 4.0;    // Faster rotation
-    const BEAT_FORCE_DURATION = 1.5;   // How long to force pattern after beat event
-
-    // Beat detection function
-    const detectBeatEvents = (bass: number, energy: number, treble: number, t: number) => {
-        const now = t;
-
-        // Add to history
-        bassHistoryRef.current.push(bass);
-        energyHistoryRef.current.push(energy);
-        trebleHistoryRef.current.push(treble);
-
-        if (bassHistoryRef.current.length > HISTORY_LENGTH) {
-            bassHistoryRef.current.shift();
-            energyHistoryRef.current.shift();
-            trebleHistoryRef.current.shift();
-        }
-
-        if (bassHistoryRef.current.length < 4) return; // Need some history
-
-        const bassAvg = bassHistoryRef.current.reduce((a, b) => a + b, 0) / bassHistoryRef.current.length;
-        const energyAvg = energyHistoryRef.current.reduce((a, b) => a + b, 0) / energyHistoryRef.current.length;
-        const trebleAvg = trebleHistoryRef.current.reduce((a, b) => a + b, 0) / trebleHistoryRef.current.length;
-
-        // 1. BASS DROP/KICK DETECTION
-        const bassThreshold = bassAvg * 1.4; // 40% above average
-        if (bass > bassThreshold && bass > 100 && (now - lastBeatTimeRef.current) > 0.3) {
-            console.log("🥁 BASS KICK detected!", bass, "vs avg", bassAvg);
-            lastBeatTimeRef.current = now;
-            forcedPatternRef.current = Math.random() > 0.5 ? "bottom" : "top-bottom";
-            forcedPatternEndRef.current = now + BEAT_FORCE_DURATION;
-            return true;
-        }
-
-        // 2. ENERGY SPIKE DETECTION
-        const energyThreshold = energyAvg * 1.6; // 60% above average
-        if (energy > energyThreshold && energy > 120 && (now - lastEnergySpikeRef.current) > 0.5) {
-            console.log("⚡ ENERGY SPIKE detected!", energy, "vs avg", energyAvg);
-            lastEnergySpikeRef.current = now;
-            forcedPatternRef.current = "sparkle";
-            forcedPatternEndRef.current = now + BEAT_FORCE_DURATION;
-            return true;
-        }
-
-        // 3. TREBLE/HI-HAT PATTERN DETECTION
-        const trebleThreshold = trebleAvg * 1.5; // 50% above average
-        if (treble > trebleThreshold && treble > 80 && (now - lastFreqChangeRef.current) > 0.4) {
-            console.log("🎵 TREBLE CHANGE detected!", treble, "vs avg", trebleAvg);
-            lastFreqChangeRef.current = now;
-            forcedPatternRef.current = Math.random() > 0.5 ? "top" : "shift";
-            forcedPatternEndRef.current = now + BEAT_FORCE_DURATION * 0.8; // Shorter for treble
-            return true;
-        }
-
-        // 4. SUDDEN DROP/SILENCE DETECTION
-        if (energy < energyAvg * 0.4 && energyAvg > 100 && (now - lastEnergySpikeRef.current) > 1.0) {
-            console.log("🔇 ENERGY DROP detected!", energy, "vs avg", energyAvg);
-            lastEnergySpikeRef.current = now;
-            forcedPatternRef.current = "white";
-            forcedPatternEndRef.current = now + BEAT_FORCE_DURATION * 0.5;
-            return true;
-        }
-
-        return false;
-    };
-
-    // Enhanced pattern selection with beat detection
-    const selectPatternWithBeats = (bass: number, energy: number, treble: number, mid: number, t: number): PatternId => {
-        // Check if we're in a forced pattern period
-        if (forcedPatternRef.current && t < forcedPatternEndRef.current) {
-            return forcedPatternRef.current;
-        }
-
-        // Clear forced pattern if expired
-        if (t >= forcedPatternEndRef.current) {
-            forcedPatternRef.current = null;
-        }
-
-        // Detect beat events (will set forcedPattern if detected)
-        detectBeatEvents(bass, energy, treble, t);
-
-        // If beat event just triggered, use forced pattern
-        if (forcedPatternRef.current && t < forcedPatternEndRef.current) {
-            return forcedPatternRef.current;
-        }
-
-        // Otherwise use enhanced auto logic with natural flow
-        // Use weighted probabilities instead of hard thresholds for natural feel
-
-        const bassWeight = Math.min(bass / 255, 1.0);
-        const energyWeight = Math.min(energy / 255, 1.0);
-        const trebleWeight = Math.min(treble / 255, 1.0);
-        const midWeight = Math.min(mid / 255, 1.0);
-
-        // Create probability pools based on audio characteristics
-        const patterns: { pattern: PatternId, weight: number }[] = [];
-
-        // Base cycling patterns (always have some weight for variety)
-        patterns.push(
-            { pattern: "arrow", weight: 0.3 + midWeight * 0.4 },
-            { pattern: "double-arrow", weight: 0.25 + energyWeight * 0.3 },
-            { pattern: "shift", weight: 0.4 + midWeight * 0.3 },
-            { pattern: "inward", weight: 0.2 + bassWeight * 0.4 }
-        );
-
-        // Audio-reactive patterns with soft weights
-        if (bassWeight > 0.3) {
-            patterns.push({ pattern: "bottom", weight: bassWeight * 0.8 });
-            patterns.push({ pattern: "top-bottom", weight: bassWeight * 0.6 });
-        }
-
-        if (trebleWeight > 0.25) {
-            patterns.push({ pattern: "top", weight: trebleWeight * 0.7 });
-        }
-
-        if (energyWeight > 0.4) {
-            patterns.push({ pattern: "sparkle", weight: energyWeight * 0.5 });
-        }
-
-        // Low energy bias toward calmer patterns
-        if (energyWeight < 0.3) {
-            patterns.push({ pattern: "white", weight: (1 - energyWeight) * 0.4 });
-        }
-
-        // Add time-based variety (slow drift)
-        const timePhase = (Math.sin(t * 0.3) + 1) / 2; // 0-1 sine wave
-        patterns.forEach(p => {
-            if (["arrow", "double-arrow"].includes(p.pattern)) {
-                p.weight += timePhase * 0.2; // Boost arrows during one phase
-            } else if (["shift", "sparkle"].includes(p.pattern)) {
-                p.weight += (1 - timePhase) * 0.2; // Boost these during opposite phase
-            }
-        });
-
-        // Weighted random selection
-        const totalWeight = patterns.reduce((sum, p) => sum + p.weight, 0);
-        let random = Math.random() * totalWeight;
-
-        for (const p of patterns) {
-            random -= p.weight;
-            if (random <= 0) {
-                return p.pattern;
-            }
-        }
-
-        // Fallback (should rarely happen)
-        return "shift";
-    };
-
-    // Seed AUTO when selected so it doesn't feel stuck at "shift"
-    useEffect(() => {
-        if (selectedPattern === "auto" && analyser) {
-            const t = timeRef.current;
-            const binsSeed = new Uint8Array(analyser.frequencyBinCount);
-            analyser.getByteFrequencyData(binsSeed);
-
-            const n = binsSeed.length;
-            const bEnd = Math.max(2, Math.floor(n * 0.12));
-            let sumB = 0, sumAll = 0;
-            for (let i = 0; i < bEnd; i++) sumB += binsSeed[i];
-            for (let i = 0; i < n; i++)    sumAll += binsSeed[i];
-
-            const bass = sumB / bEnd;
-            const energy = sumAll / n;
-            const cand = selectPatternWithBeats(bass, energy, 0, 0, t);
-
-            autoCommittedRef.current = cand;
-            setAutoPatternId(cand);
-            lastCandidateRef.current = cand;
-            candidateStableFramesRef.current = REQUIRED_STABLE_FRAMES;
-            lastChangeTimeRef.current = ctx?.currentTime ?? t;
-        }
-    }, [selectedPattern, analyser, ctx]);
+    const HISTORY_LENGTH = 3; // Shorter for faster response (150ms at 20fps)
+    const MIN_PATTERN_HOLD = 0.8; // Faster pattern changes
+    const FORCE_CHANGE_AFTER = 6.0; // Shorter backup timer
 
     useEffect(() => {
         // turn LEDs off when player not running
@@ -260,11 +71,11 @@ export function DeviceControlPanel() {
         }
         if (!isConnected || !isPlaying || !analyser) return;
 
-        // Enhanced FFT size for better beat detection
-        analyser.fftSize = 256; // Increased from 128 for better resolution
-        analyser.minDecibels = -90;
+        // More responsive FFT settings for beat detection
+        analyser.fftSize = 256;
+        analyser.minDecibels = -80; // Less restrictive
         analyser.maxDecibels = -10;
-        analyser.smoothingTimeConstant = 0.5; // More responsive
+        analyser.smoothingTimeConstant = 0.3; // Much more responsive
 
         // init FFT buffer once
         if (!binsRef.current || binsRef.current.length !== analyser.frequencyBinCount) {
@@ -275,8 +86,8 @@ export function DeviceControlPanel() {
         if (ctx && ctx.state === "suspended") { ctx.resume().catch(() => {}); }
 
         const bins = binsRef.current!;
-        const fftFpsMs = 80;   // Faster updates for beat detection
-        const streamFpsMs = 35; // Slightly faster for better beat response
+        const fftFpsMs = 50;   // Faster updates (20fps)
+        const streamFpsMs = 50; // Match for responsive beat detection
 
         const tick = () => {
             rafRef.current = requestAnimationFrame(tick);
@@ -288,61 +99,124 @@ export function DeviceControlPanel() {
             const bins = new Uint8Array(analyser.frequencyBinCount);
             analyser.getByteFrequencyData(bins);
 
-            // Enhanced frequency analysis for beat detection
+            // Enhanced frequency analysis - wider bass range, better sensitivity
             const n = bins.length;
-            const bEnd = Math.max(2, Math.floor(n * 0.15)); // Wider bass range
-            const mEnd = Math.max(bEnd + 1, Math.floor(n * 0.45));
+            const bEnd = Math.max(3, Math.floor(n * 0.2)); // Wider bass (0-20%)
+            const mEnd = Math.max(bEnd + 1, Math.floor(n * 0.5)); // Mid (20-50%)
             let sumB = 0, sumM = 0, sumT = 0, sumAll = 0;
             for (let i = 0; i < bEnd; i++) sumB += bins[i];
             for (let i = bEnd; i < mEnd; i++) sumM += bins[i];
             for (let i = mEnd; i < n; i++) sumT += bins[i];
             for (let i = 0; i < n; i++)    sumAll += bins[i];
 
-            // Enhanced sensitivity for beat detection
-            const bass = (sumB / bEnd) * 1.3;
-            const mid = (sumM / (mEnd - bEnd)) * 1.1;
-            const treble = (sumT / (n - mEnd)) * 1.2;
-            const energy = (sumAll / n) * 1.2;
+            const bass = (sumB / bEnd);
+            const mid = sumM / (mEnd - bEnd);
+            const treble = sumT / (n - mEnd);
+            const energy = sumAll / n;
 
-            // strobe (manual only)
+            // Enhanced beat detection with multiple methods
+            bassHistoryRef.current.push(bass);
+            energyHistoryRef.current.push(energy);
+
+            if (bassHistoryRef.current.length > HISTORY_LENGTH) {
+                bassHistoryRef.current.shift();
+                energyHistoryRef.current.shift();
+            }
+
+            // strobe control
             const desiredHz = currentStrobeHz > 0 ? currentStrobeHz : 0;
             if (desiredHz !== lastSentStrobeRef.current) {
                 lastSentStrobeRef.current = desiredHz;
                 try { sendStrobe(desiredHz); } catch {}
             }
 
-            // Decide final pattern with beat detection
+            // Decide final pattern
             const t = timeRef.current;
             let finalPatternId: PatternId;
 
             if (selectedPattern === "auto") {
-                const candidate = selectPatternWithBeats(bass, energy, treble, mid, t);
+                const timeSinceLastChange = t - lastPatternChangeRef.current;
+                let shouldChange = false;
+                let newPattern: PatternId | null = null;
 
-                // Much faster debouncing for beat reactivity
-                if (candidate !== lastCandidateRef.current) {
-                    lastCandidateRef.current = candidate;
-                    candidateStableFramesRef.current = 1;
-                } else {
-                    candidateStableFramesRef.current++;
+                // Beat detection - look for spikes above average
+                if (bassHistoryRef.current.length >= 4) {
+                    const bassAvg = bassHistoryRef.current.reduce((a, b) => a + b, 0) / bassHistoryRef.current.length;
+                    const energyAvg = energyHistoryRef.current.reduce((a, b) => a + b, 0) / energyHistoryRef.current.length;
+
+                    // Bass kick detection
+                    if (bass > bassAvg * 1.4 && bass > 80 && timeSinceLastChange > MIN_PATTERN_HOLD) {
+                        if (t - lastBeatTimeRef.current > 0.3) { // debounce beats
+                            console.log("🥁 BASS KICK detected!", bass, "vs avg", bassAvg);
+                            lastBeatTimeRef.current = t;
+                            shouldChange = true;
+
+                            // Weighted random: favor full-color, occasional eye patterns
+                            const rand = Math.random();
+                            if (rand < 0.7) {
+                                newPattern = "full-color"; // 70% chance
+                            } else if (rand < 0.85) {
+                                newPattern = "left-eye"; // 15% chance
+                            } else {
+                                newPattern = "right-eye"; // 15% chance
+                            }
+                        }
+                    }
+
+                    // Energy spike detection
+                    else if (energy > energyAvg * 1.6 && energy > 100 && timeSinceLastChange > MIN_PATTERN_HOLD) {
+                        if (t - lastBeatTimeRef.current > 0.4) {
+                            console.log("⚡ ENERGY SPIKE detected!", energy, "vs avg", energyAvg);
+                            lastBeatTimeRef.current = t;
+                            shouldChange = true;
+
+                            // Heavily favor full patterns on energy spikes, rare eye patterns
+                            const rand = Math.random();
+                            if (rand < 0.6) {
+                                newPattern = "full-color"; // 60% chance
+                            } else if (rand < 0.9) {
+                                newPattern = "full-white"; // 30% chance
+                            } else if (rand < 0.95) {
+                                newPattern = "left-eye"; // 5% chance
+                            } else {
+                                newPattern = "right-eye"; // 5% chance
+                            }
+                        }
+                    }
+
+                    // Quiet/drop detection
+                    else if (energy < energyAvg * 0.5 && energyAvg > 80 && timeSinceLastChange > MIN_PATTERN_HOLD * 0.7) {
+                        if (t - lastBeatTimeRef.current > 0.8) {
+                            console.log("🔇 QUIET/DROP detected!", energy, "vs avg", energyAvg);
+                            lastBeatTimeRef.current = t;
+                            shouldChange = true;
+                            newPattern = "full-white"; // Clean white on drops
+                        }
+                    }
                 }
 
-                const nowSec = (ctx?.currentTime ?? t) || 0;
-                const timeSinceChange = nowSec - lastChangeTimeRef.current;
-
-                // More aggressive switching for beat events
-                const canSwitch =
-                    (candidateStableFramesRef.current >= REQUIRED_STABLE_FRAMES &&
-                        timeSinceChange >= MIN_HOLD_SECONDS) ||
-                    timeSinceChange >= FORCE_SWITCH_AFTER ||
-                    (forcedPatternRef.current && candidate === forcedPatternRef.current); // Immediate switch for beat events
-
-                if (candidate !== autoCommittedRef.current && canSwitch) {
-                    autoCommittedRef.current = candidate; // commit immediately for render
-                    setAutoPatternId(candidate);          // mirror to state for visibility
-                    lastChangeTimeRef.current = nowSec;
+                // Force change if stuck too long (backup) - favor non-eye patterns
+                if (!shouldChange && timeSinceLastChange > FORCE_CHANGE_AFTER) {
+                    shouldChange = true;
+                    const rand = Math.random();
+                    if (rand < 0.8) {
+                        // 80% chance for full patterns when forcing change
+                        newPattern = Math.random() > 0.5 ? "full-color" : "full-white";
+                    } else {
+                        // 20% chance for eye patterns
+                        newPattern = Math.random() > 0.5 ? "left-eye" : "right-eye";
+                    }
+                    console.log("🔄 Forced random change after", FORCE_CHANGE_AFTER, "seconds");
                 }
 
-                finalPatternId = autoCommittedRef.current; // always render from committed ref
+                // Apply pattern change
+                if (shouldChange && newPattern && newPattern !== autoPatternId) {
+                    setAutoPatternId(newPattern);
+                    lastPatternChangeRef.current = t;
+                    console.log("🎵 Pattern changed to:", newPattern);
+                }
+
+                finalPatternId = autoPatternId;
             } else {
                 finalPatternId = selectedPattern;
             }
@@ -402,6 +276,7 @@ export function DeviceControlPanel() {
         selectedPattern,
         patternBrightness,
         currentStrobeHz,
+        autoPatternId,
         sendData,
         sendStrobe,
     ]);
@@ -441,7 +316,7 @@ export function DeviceControlPanel() {
                         <ChromaPreview
                             rows={2}
                             cols={8}
-                            frame={new Uint8Array(rawFrameRef.current)}  // <-- unscaled preview
+                            frame={new Uint8Array(rawFrameRef.current)}
                             strobeHz={currentStrobeHz}
                             cellSize={20}
                             gap={4}
@@ -474,12 +349,15 @@ export function DeviceControlPanel() {
                             </select>
                         </div>
 
-                        {/* Beat Detection Status */}
+                        {/* Beat-Reactive Auto Mode Status */}
                         {selectedPattern === "auto" && (
                             <div className="mb-3 p-2 bg-slate-100 rounded text-xs">
-                                <div className="text-slate-600 mb-1">🎵 Beat Detection Active</div>
+                                <div className="text-slate-600 mb-1">🎵 Beat-Reactive Mode Active</div>
                                 <div className="text-slate-500">
-                                    Listening for: Bass kicks • Energy spikes • Treble changes • Drops
+                                    Current: <span className="font-semibold">{PATTERN_LABELS[autoPatternId]}</span>
+                                </div>
+                                <div className="text-slate-400 text-xs mt-1">
+                                    Listening for: Bass kicks • Energy spikes • Drops
                                 </div>
                             </div>
                         )}
@@ -529,24 +407,21 @@ export function DeviceControlPanel() {
                         </div>
                     </div>
 
-                    {/* Enhanced FFT bars with beat detection visualization */}
+                    {/* FFT bars */}
                     {fftBars && (
                         <div className="mt-3 pt-3 border-t border-slate-200">
-                            <label className="block text-xs text-slate-600 mb-2">Live FFT (Beat Detection)</label>
+                            <label className="block text-xs text-slate-600 mb-2">Beat Detection & Audio Analysis</label>
                             <div className="flex gap-[1px] items-end h-32 bg-slate-900 p-2 rounded-lg">
                                 {Array.from(fftBars).map((v, i) => {
                                     const heightPercent = Math.max(2, (v / 255) * 100);
-                                    // Enhanced color coding for beat detection
                                     let colorClass = "bg-blue-400";
-                                    if (i < fftBars.length * 0.15) {
-                                        // Bass range - red with beat indicator
-                                        colorClass = v > 150 ? "bg-red-600 animate-pulse" : "bg-red-500";
-                                    } else if (i < fftBars.length * 0.45) {
-                                        // Mid range - green
-                                        colorClass = v > 120 ? "bg-green-600" : "bg-green-500";
+                                    if (i < fftBars.length * 0.2) {
+                                        // Bass range with beat indication (wider range)
+                                        colorClass = v > 80 ? "bg-red-600 animate-pulse" : "bg-red-500";
+                                    } else if (i < fftBars.length * 0.5) {
+                                        colorClass = "bg-green-500"; // Mid
                                     } else {
-                                        // Treble range - cyan with activity indicator
-                                        colorClass = v > 100 ? "bg-cyan-300 animate-pulse" : "bg-cyan-400";
+                                        colorClass = "bg-cyan-400"; // Treble
                                     }
 
                                     return (
@@ -558,15 +433,14 @@ export function DeviceControlPanel() {
                                                 opacity: v > 5 ? 1 : 0.3
                                             }}
                                             className={`${colorClass} rounded-sm transition-all duration-100`}
-                                            title={`${i}: ${v} (${Math.round(heightPercent)}%)`}
                                         />
                                     );
                                 })}
                             </div>
                             <div className="text-xs text-slate-500 mt-1 text-center">
-                                <span className="text-red-500">●</span> Bass (kicks) •
+                                <span className="text-red-500">●</span> Bass •
                                 <span className="text-green-500">●</span> Mid •
-                                <span className="text-cyan-400">●</span> Treble (hi-hats)
+                                <span className="text-cyan-400">●</span> Treble
                             </div>
                         </div>
                     )}
@@ -577,10 +451,7 @@ export function DeviceControlPanel() {
                             {isPlaying ? (
                                 <div className="text-green-600">
                                     🎵 Synced with main player • Pattern:{" "}
-                                    {selectedPattern === "auto" ? `AUTO (${autoPatternId})` : (PATTERN_LABELS[selectedPattern] ?? selectedPattern)}
-                                    {forcedPatternRef.current && selectedPattern === "auto" && (
-                                        <span className="text-orange-500 font-semibold"> • 🎵 BEAT EVENT!</span>
-                                    )}
+                                    {selectedPattern === "auto" ? `AUTO (${PATTERN_LABELS[autoPatternId]})` : (PATTERN_LABELS[selectedPattern] ?? selectedPattern)}
                                 </div>
                             ) : (
                                 <div className="text-slate-400">⏸️ Waiting for main player to start</div>
