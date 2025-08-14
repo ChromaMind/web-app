@@ -210,7 +210,7 @@ export default function CollectionPage() {
                 
                 {/* Audio Play Button Overlay */}
                 {collection.audioCid && (
-                  <div className="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-20 transition-all duration-300 flex items-center justify-center">
+                  <div className="absolute inset-0  bg-opacity-0 hover:bg-opacity-20 transition-all duration-300 flex items-center justify-center">
                     <button
                       onClick={handlePlayAudio}
                       className="p-4 bg-white bg-opacity-90 rounded-full shadow-lg hover:bg-opacity-100 transition-all duration-200"

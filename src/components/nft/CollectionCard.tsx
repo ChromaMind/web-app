@@ -84,9 +84,7 @@ export function CollectionCard({ collection }: CollectionCardProps) {
         />
         
         {/* Overlay with collection info */}
-        <div className={`absolute inset-0 transition-all duration-300 ${
-          isHovered ? 'bg-black bg-opacity-30' : 'bg-opacity-0'
-        }`}>
+        <div className={`absolute inset-0 transition-all duration-300`}>
           <div className={`absolute bottom-4 left-4 right-4 text-white transition-opacity duration-300 ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">

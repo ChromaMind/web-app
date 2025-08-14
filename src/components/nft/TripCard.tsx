@@ -65,14 +65,14 @@ export function TripCard({ trip }: TripCardProps) {
 
     return (
         <div
-            className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300"
+            className="bg-white rounded-xl shadow-lg overflow-hidden  transition-all duration-300"
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
         >
             {/* Image Section */}
             <div className="relative aspect-square">
                 <Image
-                    src={imageSrc}
+                    src={trip.imageUrl}
                     alt={trip.name}
                     fill
                     className="object-cover"
