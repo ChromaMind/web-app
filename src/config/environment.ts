@@ -1,5 +1,5 @@
 // Environment configuration for different networks
-export type Environment = 'local' | 'sepolia' | 'mainnet';
+export type Environment = 'local' | 'sepolia' ;
 
 // Get current environment from environment variable or default to local
 export const getCurrentEnvironment = (): Environment => {
@@ -39,23 +39,8 @@ export const ENVIRONMENT_CONFIG = {
       streamingLedger: '0x70d5B407fb6713e9A0847A903233342624291Feb',
       tripNftTest: '0x23f5af18AD81e91Eb1570c0a390757a63Db25EDB'
     }
-  },
-  mainnet: {
-    name: 'Ethereum Mainnet',
-    chainId: 1,
-    rpcUrl: 'https://eth.llamarpc.com',
-    explorerUrl: 'https://etherscan.io',
-    nativeCurrency: {
-      name: 'Ether',
-      symbol: 'ETH',
-      decimals: 18
-    },
-    contracts: {
-      tripFactory: '', // Add mainnet addresses when deployed
-      streamingLedger: '',
-      tripNftTest: ''
-    }
   }
+  
 };
 
 // Get current environment config
@@ -67,4 +52,3 @@ export const getCurrentConfig = () => {
 // Helper to check if we're in development
 export const isDevelopment = () => getCurrentEnvironment() === 'sepolia';
 export const isTestnet = () => getCurrentEnvironment() === 'sepolia';
-export const isMainnet = () => getCurrentEnvironment() === 'mainnet';
