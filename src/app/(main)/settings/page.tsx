@@ -66,6 +66,18 @@ export default function SettingsPage() {
         <BrightnessCalibration />
       </section>
 
+      {/* Section for Account Settings */}
+      <section>
+        <h2 className="text-xl font-semibold text-slate-700 mb-4 pb-2 border-b">Account</h2>
+        <div className="bg-white p-6 rounded-lg border border-slate-200">
+          <h3 className="font-bold text-slate-800">Wallet Connection</h3>
+          <p className="text-sm text-slate-600 mt-1 mb-4">
+            Manage your wallet connection, view your balance, and disconnect.
+          </p>
+          <appkit-button />
+        </div>
+      </section>
+
       {/* You can add more sections here in the future */}
       {/* 
       <section>
