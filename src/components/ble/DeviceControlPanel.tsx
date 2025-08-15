@@ -135,6 +135,7 @@ export function DeviceControlPanel() {
             let finalPatternId: PatternId;
 
             if (selectedPattern === "auto") {
+               
                 const timeSinceLastChange = t - lastPatternChangeRef.current;
                 let shouldChange = false;
                 let newPattern: PatternId | null = null;
@@ -151,15 +152,6 @@ export function DeviceControlPanel() {
                             lastBeatTimeRef.current = t;
                             shouldChange = true;
 
-                            // Weighted random: favor full-color, occasional eye patterns
-                            const rand = Math.random();
-                            if (rand < 0.7) {
-                                newPattern = "full-color"; // 70% chance
-                            } else if (rand < 0.85) {
-                                newPattern = "left-eye"; // 15% chance
-                            } else {
-                                newPattern = "right-eye"; // 15% chance
-                            }
                         }
                     }
 
@@ -170,17 +162,6 @@ export function DeviceControlPanel() {
                             lastBeatTimeRef.current = t;
                             shouldChange = true;
 
-                            // Heavily favor full patterns on energy spikes, rare eye patterns
-                            const rand = Math.random();
-                            if (rand < 0.6) {
-                                newPattern = "full-color"; // 60% chance
-                            } else if (rand < 0.9) {
-                                newPattern = "full-white"; // 30% chance
-                            } else if (rand < 0.95) {
-                                newPattern = "left-eye"; // 5% chance
-                            } else {
-                                newPattern = "right-eye"; // 5% chance
-                            }
                         }
                     }
 
@@ -190,7 +171,6 @@ export function DeviceControlPanel() {
                             console.log("🔇 QUIET/DROP detected!", energy, "vs avg", energyAvg);
                             lastBeatTimeRef.current = t;
                             shouldChange = true;
-                            newPattern = "full-white"; // Clean white on drops
                         }
                     }
                 }
@@ -198,18 +178,13 @@ export function DeviceControlPanel() {
                 // Force change if stuck too long (backup) - favor non-eye patterns
                 if (!shouldChange && timeSinceLastChange > FORCE_CHANGE_AFTER) {
                     shouldChange = true;
-                    const rand = Math.random();
-                    if (rand < 0.8) {
-                        // 80% chance for full patterns when forcing change
-                        newPattern = Math.random() > 0.5 ? "full-color" : "full-white";
-                    } else {
-                        // 20% chance for eye patterns
-                        newPattern = Math.random() > 0.5 ? "left-eye" : "right-eye";
-                    }
+
                     console.log("🔄 Forced random change after", FORCE_CHANGE_AFTER, "seconds");
                 }
 
-                // Apply pattern change
+                if (shouldChange){
+                    newPattern=choosePatternIdAuto(bass, energy, t)
+                }// Apply pattern change
                 if (shouldChange && newPattern && newPattern !== autoPatternId) {
                     setAutoPatternId(newPattern);
                     lastPatternChangeRef.current = t;
