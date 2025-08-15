@@ -63,10 +63,10 @@ const pRandomSparkle = ({ rows, cols, t }: PatternContext) => {
     const density = 0.5; // 0..1 fraction of pixels ON per frame
     return makeFrame(rows, cols, (x, y) => (Math.random() < density ? brightColorFor(x, y, f) : OFF));
 };// Color Shift - each eye gets different colors that shift
-const pEyeColorShift = ({ rows, cols, t }: PatternContext) => {
-    const hz = SHIFT_BASE_HZ;
-    const phase = (t * hz) % 1;
+// Color Shift - each eye gets different colors that shift
 
+
+const pEyeColorShift = ({ rows, cols, t }: PatternContext) => {
     // Get two different colors offset by half the palette
     const leftColorIdx = Math.floor((t / 2.0) % BRIGHT_PALETTE.length);
     const rightColorIdx = (leftColorIdx + Math.floor(BRIGHT_PALETTE.length / 2)) % BRIGHT_PALETTE.length;
@@ -78,12 +78,14 @@ const pEyeColorShift = ({ rows, cols, t }: PatternContext) => {
 
     return makeFrame(rows, cols, (x) => {
         if (x < leftHalf) {
-            return phase < 0.5 ? leftColor : OFF;
+            return leftColor;  // Left eye always on with its color
         } else {
-            return phase >= 0.5 ? rightColor : OFF;
+            return rightColor; // Right eye always on with its color
         }
     });
 };
+
+
 function getCurrentColor(t: number, cycleDuration = 2.0): RGB {
     const idx = Math.floor((t / cycleDuration) % BRIGHT_PALETTE.length);
     return BRIGHT_PALETTE[idx];
