@@ -23,8 +23,8 @@ export function PatternGenerator() {
   const [multiPatterns, setMultiPatterns] = useState<PatternConfig[]>([
     { patternId: 'full-color', startTime: 0, endTime: 15, brightness: 0.8, strobeHz: 0 },
     { patternId: 'full-white', startTime: 15, endTime: 30, brightness: 0.9, strobeHz: 5 },
-    { patternId: 'left-eye', startTime: 30, endTime: 45, brightness: 0.7, strobeHz: 0 },
-    { patternId: 'right-eye', startTime: 30, endTime: 45, brightness: 0.7, strobeHz: 0 },
+    // { patternId: 'left-eye', startTime: 30, endTime: 45, brightness: 0.7, strobeHz: 0 },
+    // { patternId: 'right-eye', startTime: 30, endTime: 45, brightness: 0.7, strobeHz: 0 },
   ]);
 
   const [generatedData, setGeneratedData] = useState<any>(null);

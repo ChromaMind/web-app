@@ -52,7 +52,7 @@ export function DeviceControlPanel() {
     const binsRef = useRef<Uint8Array | null>(null);
 
     // Enhanced beat detection state
-    const [autoPatternId, setAutoPatternId] = useState<PatternId>("left-eye");
+    const [autoPatternId, setAutoPatternId] = useState<PatternId>("full-white");
 
     // Multiple beat detection methods
     const lastBeatTimeRef = useRef(0);
