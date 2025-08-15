@@ -3,16 +3,12 @@ export type RGB = [number, number, number];
 export type FrameRGB = Uint8Array;
 
 export type PatternId =
-    | "left-eye"
-    | "right-eye"
     | "full-color"
     | "full-white"
     | "full-black"
     | "eye-shift"
-    | "eye-wave-shift"
-    | "eye-bounce-shift"
-    | "eye-breathing-shift"
-    | "eye-chase-shift";
+    | "eye-color-shift"
+    | "random-sparkle";
 
 export interface PatternContext {
     rows: number;
@@ -54,25 +50,46 @@ const BRIGHT_PALETTE: RGB[] = [
     [  0, 255, 255], // Cyan
     [255, 255, 255], // White
 ];
+// Random Sparkle - random pixels light up with random colors
+const pRandomSparkle = ({ rows, cols, t }: PatternContext) => {
+    const frameIndex = (t: number) => Math.floor(t * 10); // 10 fps
+    const brightColorFor = (x: number, y: number, frame: number) => {
+        const seed = x + y * 1000 + frame * 10000;
+        const idx = seed % BRIGHT_PALETTE.length;
+        return BRIGHT_PALETTE[idx];
+    };
 
+    const f = frameIndex(t);
+    const density = 0.5; // 0..1 fraction of pixels ON per frame
+    return makeFrame(rows, cols, (x, y) => (Math.random() < density ? brightColorFor(x, y, f) : OFF));
+};// Color Shift - each eye gets different colors that shift
+const pEyeColorShift = ({ rows, cols, t }: PatternContext) => {
+    const hz = SHIFT_BASE_HZ;
+    const phase = (t * hz) % 1;
+
+    // Get two different colors offset by half the palette
+    const leftColorIdx = Math.floor((t / 2.0) % BRIGHT_PALETTE.length);
+    const rightColorIdx = (leftColorIdx + Math.floor(BRIGHT_PALETTE.length / 2)) % BRIGHT_PALETTE.length;
+
+    const leftColor = BRIGHT_PALETTE[leftColorIdx];
+    const rightColor = BRIGHT_PALETTE[rightColorIdx];
+
+    const leftHalf = Math.floor(cols / 2);
+
+    return makeFrame(rows, cols, (x) => {
+        if (x < leftHalf) {
+            return phase < 0.5 ? leftColor : OFF;
+        } else {
+            return phase >= 0.5 ? rightColor : OFF;
+        }
+    });
+};
 function getCurrentColor(t: number, cycleDuration = 2.0): RGB {
     const idx = Math.floor((t / cycleDuration) % BRIGHT_PALETTE.length);
     return BRIGHT_PALETTE[idx];
 }
 
 /* ===== Patterns ===== */
-const pLeftEye = ({ rows, cols, t }: PatternContext) => {
-    const color = getCurrentColor(t);
-    const leftHalf = Math.floor(cols / 2);
-    return makeFrame(rows, cols, (x) => (x < leftHalf ? color : OFF));
-};
-
-const pRightEye = ({ rows, cols, t }: PatternContext) => {
-    const color = getCurrentColor(t);
-    const leftHalf = Math.floor(cols / 2);
-    return makeFrame(rows, cols, (x) => (x >= leftHalf ? color : OFF));
-};
-
 const pFullColor = ({ rows, cols, t }: PatternContext) => {
     const color = getCurrentColor(t);
     return makeFrame(rows, cols, () => color);
@@ -207,42 +224,30 @@ const pEyeChaseShift = ({ rows, cols, t }: PatternContext) => {
 
 /* ===== Registry ===== */
 export const PATTERNS: Record<PatternId, (c: PatternContext) => FrameRGB> = {
-    "left-eye": pLeftEye,
-    "right-eye": pRightEye,
     "full-color": pFullColor,
     "full-white": pFullWhite,
     "full-black": pFullBlack,
     "eye-shift": pEyeShift,
-    "eye-wave-shift": pEyeWaveShift,
-    "eye-bounce-shift": pEyeBounceShift,
-    "eye-breathing-shift": pEyeBreathingShift,
-    "eye-chase-shift": pEyeChaseShift,
+    "eye-color-shift": pEyeColorShift,
+    "random-sparkle": pRandomSparkle,
 };
 
 export const ALL_PATTERN_IDS: PatternId[] = [
-    "left-eye",
-    "right-eye",
     "full-color",
     "full-white",
     "full-black",
     "eye-shift",
-    "eye-wave-shift",
-    "eye-bounce-shift",
-    "eye-breathing-shift",
-    "eye-chase-shift",
+    "eye-color-shift",
+    "random-sparkle",
 ];
 
 export const PATTERN_LABELS: Record<PatternId, string> = {
-    "left-eye": "Left Eye",
-    "right-eye": "Right Eye",
     "full-color": "Full Color",
     "full-white": "Full White",
     "full-black": "Full Black",
     "eye-shift": "Eye Shift",
-    "eye-wave-shift": "Eye Wave Shift",
-    "eye-bounce-shift": "Eye Bounce Shift",
-    "eye-breathing-shift": "Eye Breathing Shift",
-    "eye-chase-shift": "Eye Chase Shift",
+    "eye-color-shift": "Eye Color Shift",
+    "random-sparkle": "Random Sparkle",
 };
 
 export const renderPattern = (id: PatternId, ctx: PatternContext) => PATTERNS[id](ctx);
@@ -275,27 +280,35 @@ export function choosePatternIdAuto(bass: number, energy: number, t: number): Pa
 
     const isKick = bass > 90;
     const isSpike = energy > 120;
+    const isVeryQuiet = energy < 30;
     const isDrop = energy < 55;
+
+    // Check very quiet first (most specific)
+    if (isVeryQuiet) {
+        return pickWeighted(rnd, [
+            // { v: "full-black" as const, w: 60 },
+            { v: "random-sparkle" as const, w: 30 },
+            { v: "full-color" as const, w: 10 },
+        ]);
+    }
 
     if (isKick) {
         return pickWeighted(rnd, [
-            { v: "full-color" as const, w: 50 },
-            { v: "eye-shift"  as const, w: 15 },
-            // { v: "eye-wave-shift" as const, w: 10 },
-            { v: "eye-bounce-shift" as const, w: 10 },
-            // { v: "eye-chase-shift" as const, w: 8 },
-            // { v: "left-eye"   as const, w: 3.5 },
-            // { v: "right-eye"  as const, w: 3.5 },
+            { v: "full-color" as const, w: 40 },
+            { v: "eye-shift"  as const, w: 20 },
+            { v: "eye-color-shift" as const, w: 15 },
+            { v: "random-sparkle" as const, w: 15 },
+            // { v: "full-black" as const, w: 10 },
         ]);
     }
 
     if (isSpike) {
         return pickWeighted(rnd, [
-            { v: "full-color" as const, w: 55 },
+            { v: "full-color" as const, w: 40 },
             { v: "full-white" as const, w: 20 },
+            { v: "random-sparkle" as const, w: 20 },
             { v: "eye-shift"  as const, w: 10 },
-            // { v: "eye-wave-shift" as const, w: 8 },
-            // { v: "eye-breathing-shift" as const, w: 7 },
+            { v: "eye-color-shift" as const, w: 10 },
         ]);
     }
 
@@ -304,27 +317,21 @@ export function choosePatternIdAuto(bass: number, energy: number, t: number): Pa
     const phase = Math.floor(t / 6) % 4;
     if (phase === 0) {
         return pickWeighted(rnd, [
-            { v: "full-color" as const, w: 40 },
-            { v: "full-white" as const, w: 15 },
-            { v: "eye-shift"  as const, w: 12 },
-            // { v: "eye-wave-shift" as const, w: 10 },
-            { v: "eye-bounce-shift" as const, w: 8 },
-            // { v: "eye-breathing-shift" as const, w: 8 },
-            // { v: "eye-chase-shift" as const, w: 4 },
-            // { v: "left-eye"   as const, w: 1.5 },
-            // { v: "right-eye"  as const, w: 1.5 },
+            { v: "full-color" as const, w: 30 },
+            { v: "eye-color-shift" as const, w: 25 },
+            { v: "random-sparkle" as const, w: 15 },
+            { v: "eye-shift"  as const, w: 15 },
+            { v: "full-white" as const, w: 10 },
+            // { v: "full-black" as const, w: 5 },
         ]);
     }
 
     return pickWeighted(rnd, [
-        { v: "full-color" as const, w: 35 },
-        { v: "full-white" as const, w: 18 },
+        { v: "full-color" as const, w: 30 },
+        { v: "eye-color-shift" as const, w: 25 },
+        { v: "random-sparkle" as const, w: 15 },
         { v: "eye-shift"  as const, w: 15 },
-        { v: "eye-wave-shift" as const, w: 12 },
-        { v: "eye-bounce-shift" as const, w: 8 },
-        { v: "eye-breathing-shift" as const, w: 7 },
-        { v: "eye-chase-shift" as const, w: 3 },
-        { v: "left-eye"   as const, w: 1 },
-        { v: "right-eye"  as const, w: 1 },
+        { v: "full-white" as const, w: 10 },
+        // { v: "full-black" as const, w: 5 },
     ]);
 }
